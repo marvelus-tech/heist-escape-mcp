@@ -1,12 +1,35 @@
 # Heist Escape MCP
 
-A cooperative escape-room ARG/heist game implemented as a remote MCP server on Cloudflare Workers, with a light-themed three.js demo client.
+A **showable cooperative escape-room ARG/heist game** with big-screen stage, QR lobby, and role-specific experiences. Built as a remote MCP server on Cloudflare Workers with a light-themed demo client.
+
+**🎭 Stage Mode**: Click "Start Demo" → QR codes appear → Examiner (agent) copies MCP config → Operator (human) joins on phone → Cooperative heist begins!
 
 **Theme:** Bright, welcoming museum heist (not dark/cyberpunk)  
 **Duration:** 5-10 minutes (pitch path) | 30-45 minutes (full game)  
-**Players:** 2 (cooperative, shared state)  
+**Roles:** Examiner (Agent) + Operator (Human)  
 **Rooms:** 5 interconnected spaces  
 **Puzzles:** 4 code-based puzzles with progressive hints
+
+---
+
+## 🎯 Quick Demo
+
+### Production (GitHub Pages)
+👉 **[Launch Stage](https://marvelus-tech.github.io/heist-escape-mcp/)** 
+
+_Replace with your URL after deployment. See [DEPLOY.md](docs/DEPLOY.md) for setup._
+
+### Local Development
+```bash
+# Terminal 1: Start MCP Server
+cd packages/mcp-server && npm run seed && npm run dev
+
+# Terminal 2: Start Demo Client
+cd apps/demo-client && npm run dev
+
+# Open: http://localhost:3000
+# Click "Start Demo" and follow the flow
+```
 
 ---
 

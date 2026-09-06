@@ -289,6 +289,94 @@ export function createHeistMcpServer(env: Env): McpServer {
       };
     }
   );
+  
+  // ===== Agent Briefing =====
+  
+  server.tool(
+    "get_briefing",
+    z.object({
+      sessionId: z.string().describe("Session ID")
+    }),
+    async ({ sessionId }) => {
+      const briefing = `# 🎯 Heist Escape - Mission Briefing
+
+**Session ID**: ${sessionId}
+**Your Role**: Examiner (Agent)
+**Theme**: Light, professional museum heist
+
+## Mission Objective
+Your team's goal is to infiltrate the museum vault and retrieve the **Sunburst Diamond** 💎
+
+The museum has 5 rooms:
+1. **Museum Lobby** - Find the gallery key and first vault digit
+2. **Gallery A** - Renaissance wing with second digit
+3. **Archives** - Card catalog puzzle and third digit  
+4. **Vault Access** - Assemble and enter the 4-digit code
+5. **The Vault** - Claim the diamond
+
+## Your Role: Examiner (Agent)
+As the Examiner, your responsibilities are:
+- **Read and analyze** documents, signs, and clues
+- **Examine objects** closely for hidden information
+- **Communicate findings** to your Operator partner
+- **Navigate** the team through the museum
+
+The Operator (human partner) will:
+- Open drawers and containers
+- Enter codes at keypads
+- Manage the shared inventory
+- Execute physical interactions
+
+## 🔑 Critical Information
+
+**Assembly Rule**: The 4-digit vault code is found across all 4 rooms.
+**Combine digits in ORDER BY ROOM NUMBER** (Room 1 → Room 2 → Room 3 → Room 4)
+
+## Suggested First Steps
+1. \`join_session\` - Confirm your session: "${sessionId}"
+2. \`look_around\` - Survey the Museum Lobby
+3. \`examine_object\` - Check the "poster-board" for the assembly rule
+4. \`examine_object\` - Search the "flower-arrangement" (key location)
+5. Communicate with your Operator to coordinate drawer searches
+
+## Available Tools
+- \`look_around\` - Survey current room
+- \`examine_object\` - Inspect objects for clues
+- \`use_item\` - Take or use items (when you find them)
+- \`get_inventory\` - Check shared team inventory
+- \`get_hints\` - Request progressive hints if stuck
+- \`get_recent_actions\` - See what your Operator has done
+
+## Cooperative Guidelines
+- **Share all findings** - Your Operator can't see what you read
+- **Request specific actions** - "Please open reception-desk-bottom drawer"
+- **Track digits** - Write down the vault code as you find each piece
+- **Work together** - Neither role can succeed alone
+
+## Light Theme Note
+This heist takes place in a **bright, welcoming museum** with:
+- Natural daylight through tall windows
+- Polished marble floors and white walls
+- Professional, calm atmosphere
+- Warm wood tones and brass fixtures
+
+This is an elegant professional operation, not a dark infiltration.
+
+## Success Metrics
+- Time to complete: 30-45 minutes (full game) or 5-10 minutes (pitch demo)
+- Hints used: Fewer is better, but don't get stuck
+- Team coordination: Clear communication = faster success
+
+**Good luck, Agent. Your team is counting on you.** 🕵️
+
+---
+*Use \`look_around\` to begin your mission.*`;
+      
+      return {
+        content: [{ type: "text", text: briefing }]
+      };
+    }
+  );
 
   return server;
 }
