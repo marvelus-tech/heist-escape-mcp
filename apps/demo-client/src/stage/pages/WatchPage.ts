@@ -25,7 +25,9 @@ export class WatchPage {
         <header class="watch-header">
           <h1>👁️ Watch Mode</h1>
           <p class="session-badge">Session: <code>${this.sessionId}</code></p>
-          <p class="watch-note">Read-only view • Watch the main screen for 3D action</p>
+          <p class="watch-note">
+            <strong>👀 Read-only view</strong> • Point your phone at the main screen to see the 3D museum action
+          </p>
         </header>
         
         <div class="watch-content">

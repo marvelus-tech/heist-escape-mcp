@@ -17,13 +17,15 @@ interface GameObject {
 /**
  * Scene Manager for Heist Escape
  * 
- * Builds bright, light-themed 3D dioramas for each room
- * Uses simple primitives with clean materials
+ * Builds premium museum-themed 3D dioramas for each room
+ * Light theme: white/marble, warm brass, soft wood, paper documents
+ * Hemisphere + warm key + cool rim lighting
  */
 export class SceneManager {
   private scene: THREE.Scene;
   private interactableObjects: Map<string, THREE.Object3D> = new Map();
   private pulsingObjects: Map<THREE.Object3D, { startTime: number; duration: number }> = new Map();
+  private lights: THREE.Light[] = [];
   
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -32,6 +34,9 @@ export class SceneManager {
   buildRoom(room: Room, objects: GameObject[]): void {
     // Clear previous room
     this.clearScene();
+    
+    // Setup premium museum lighting
+    this.setupLighting(room.id);
     
     // Build floor
     this.buildFloor();
@@ -43,6 +48,60 @@ export class SceneManager {
     objects.forEach(obj => {
       this.addRoomObject(obj);
     });
+  }
+  
+  private setupLighting(roomId: number): void {
+    // Clear existing lights
+    this.lights.forEach(light => this.scene.remove(light));
+    this.lights = [];
+    
+    // Hemisphere light (soft ambient)
+    const hemisphere = new THREE.HemisphereLight(
+      0xffffff, // sky: pure white
+      0xf5f0e8, // ground: warm paper
+      0.6
+    );
+    this.scene.add(hemisphere);
+    this.lights.push(hemisphere);
+    
+    // Warm key light (main directional)
+    const keyLight = new THREE.DirectionalLight(0xfff4e6, 0.8);
+    keyLight.position.set(5, 8, 4);
+    keyLight.castShadow = true;
+    keyLight.shadow.camera.left = -15;
+    keyLight.shadow.camera.right = 15;
+    keyLight.shadow.camera.top = 15;
+    keyLight.shadow.camera.bottom = -15;
+    keyLight.shadow.mapSize.width = 2048;
+    keyLight.shadow.mapSize.height = 2048;
+    this.scene.add(keyLight);
+    this.lights.push(keyLight);
+    
+    // Cool rim light (subtle depth)
+    const rimLight = new THREE.DirectionalLight(0xe6f2ff, 0.3);
+    rimLight.position.set(-4, 6, -6);
+    this.scene.add(rimLight);
+    this.lights.push(rimLight);
+    
+    // Room-specific accent lighting
+    if (roomId === 1) {
+      // Museum lobby: warm spotlights
+      const spot1 = new THREE.SpotLight(0xfff4e6, 0.4, 12, Math.PI / 6, 0.3);
+      spot1.position.set(-3, 7, 0);
+      spot1.target.position.set(-3, 0, 0);
+      spot1.castShadow = true;
+      this.scene.add(spot1);
+      this.scene.add(spot1.target);
+      this.lights.push(spot1);
+      
+      const spot2 = new THREE.SpotLight(0xfff4e6, 0.4, 12, Math.PI / 6, 0.3);
+      spot2.position.set(3, 7, 0);
+      spot2.target.position.set(3, 0, 0);
+      spot2.castShadow = true;
+      this.scene.add(spot2);
+      this.scene.add(spot2.target);
+      this.lights.push(spot2);
+    }
   }
   
   private clearScene(): void {
@@ -62,11 +121,13 @@ export class SceneManager {
   }
   
   private buildFloor(): void {
+    // Premium marble-like floor
     const floorGeometry = new THREE.PlaneGeometry(20, 20);
     const floorMaterial = new THREE.MeshStandardMaterial({
-      color: 0xf8f9fa,
-      roughness: 0.8,
-      metalness: 0.1
+      color: 0xfafafa, // Pure white marble
+      roughness: 0.3,
+      metalness: 0.05,
+      envMapIntensity: 0.5
     });
     
     const floor = new THREE.Mesh(floorGeometry, floorMaterial);
@@ -74,17 +135,20 @@ export class SceneManager {
     floor.receiveShadow = true;
     this.scene.add(floor);
     
-    // Add subtle floor grid
-    const gridHelper = new THREE.GridHelper(20, 20, 0xe9ecef, 0xf1f3f5);
+    // Subtle floor grid (barely visible)
+    const gridHelper = new THREE.GridHelper(20, 20, 0xf0f0f0, 0xf8f8f8);
     gridHelper.position.y = 0.01;
+    gridHelper.material.opacity = 0.3;
+    gridHelper.material.transparent = true;
     this.scene.add(gridHelper);
   }
   
   private buildWalls(roomId: number): void {
+    // Museum walls: clean white with subtle texture
     const wallMaterial = new THREE.MeshStandardMaterial({
       color: 0xffffff,
-      roughness: 0.9,
-      metalness: 0.05
+      roughness: 0.85,
+      metalness: 0.02
     });
     
     // Back wall
@@ -94,6 +158,7 @@ export class SceneManager {
     );
     backWall.position.set(0, 4, -10);
     backWall.receiveShadow = true;
+    backWall.castShadow = true;
     this.scene.add(backWall);
     
     // Side walls
@@ -103,6 +168,7 @@ export class SceneManager {
     );
     leftWall.position.set(-10, 4, 0);
     leftWall.receiveShadow = true;
+    leftWall.castShadow = true;
     this.scene.add(leftWall);
     
     const rightWall = new THREE.Mesh(
@@ -111,23 +177,26 @@ export class SceneManager {
     );
     rightWall.position.set(10, 4, 0);
     rightWall.receiveShadow = true;
+    rightWall.castShadow = true;
     this.scene.add(rightWall);
     
-    // Room-specific accents
+    // Add brass/wood accents
     this.addRoomAccents(roomId);
   }
   
   private addRoomAccents(roomId: number): void {
-    // Add ambient props based on room
+    // Add brass/wood accents based on room
     switch (roomId) {
       case 1: // Museum Lobby
-        this.addWindow(-8, 5, -9.8);
-        this.addWindow(0, 5, -9.8);
-        this.addWindow(8, 5, -9.8);
+        this.addBrassWindow(-8, 5, -9.8);
+        this.addBrassWindow(0, 5, -9.8);
+        this.addBrassWindow(8, 5, -9.8);
+        this.addWoodTrim(-9.5, 2, 0); // Crown molding left
+        this.addWoodTrim(9.5, 2, 0); // Crown molding right
         break;
       case 2: // Gallery A
-        this.addSpotlight(-5, 7, 2);
-        this.addSpotlight(5, 7, 2);
+        this.addSpotlight(-5, 7, 2, 0xfff4e6);
+        this.addSpotlight(5, 7, 2, 0xfff4e6);
         break;
       case 3: // Archives
         this.addBookshelf(-9, 2, -5);
@@ -143,28 +212,92 @@ export class SceneManager {
     }
   }
   
-  private addWindow(x: number, y: number, z: number): void {
-    const windowGeometry = new THREE.BoxGeometry(2, 3, 0.1);
-    const windowMaterial = new THREE.MeshStandardMaterial({
-      color: 0x87ceeb,
+  private addBrassWindow(x: number, y: number, z: number): void {
+    const group = new THREE.Group();
+    
+    // Glass pane
+    const glassGeometry = new THREE.PlaneGeometry(1.8, 2.8);
+    const glassMaterial = new THREE.MeshPhysicalMaterial({
+      color: 0xe6f3ff,
       transparent: true,
-      opacity: 0.6,
-      metalness: 0.8,
-      roughness: 0.2
+      opacity: 0.4,
+      metalness: 0.1,
+      roughness: 0.1,
+      transmission: 0.7
+    });
+    const glass = new THREE.Mesh(glassGeometry, glassMaterial);
+    glass.position.z = 0.05;
+    group.add(glass);
+    
+    // Brass frame
+    const brassMaterial = new THREE.MeshStandardMaterial({
+      color: 0xb8860b, // Dark goldenrod brass
+      roughness: 0.3,
+      metalness: 0.9
     });
     
-    const windowMesh = new THREE.Mesh(windowGeometry, windowMaterial);
-    windowMesh.position.set(x, y, z);
-    this.scene.add(windowMesh);
+    const frameThickness = 0.08;
+    const frameDepth = 0.1;
+    
+    // Top frame
+    const topFrame = new THREE.Mesh(
+      new THREE.BoxGeometry(2, frameThickness, frameDepth),
+      brassMaterial
+    );
+    topFrame.position.y = 1.4;
+    group.add(topFrame);
+    
+    // Bottom frame
+    const bottomFrame = new THREE.Mesh(
+      new THREE.BoxGeometry(2, frameThickness, frameDepth),
+      brassMaterial
+    );
+    bottomFrame.position.y = -1.4;
+    group.add(bottomFrame);
+    
+    // Left frame
+    const leftFrame = new THREE.Mesh(
+      new THREE.BoxGeometry(frameThickness, 2.8, frameDepth),
+      brassMaterial
+    );
+    leftFrame.position.x = -0.9;
+    group.add(leftFrame);
+    
+    // Right frame
+    const rightFrame = new THREE.Mesh(
+      new THREE.BoxGeometry(frameThickness, 2.8, frameDepth),
+      brassMaterial
+    );
+    rightFrame.position.x = 0.9;
+    group.add(rightFrame);
+    
+    group.position.set(x, y, z);
+    this.scene.add(group);
   }
   
-  private addSpotlight(x: number, y: number, z: number): void {
-    const spot = new THREE.SpotLight(0xffffff, 0.5, 15, Math.PI / 6, 0.5);
+  private addWoodTrim(x: number, y: number, z: number): void {
+    const woodMaterial = new THREE.MeshStandardMaterial({
+      color: 0xb8956a, // Warm oak
+      roughness: 0.7,
+      metalness: 0.05
+    });
+    
+    const trim = new THREE.Mesh(
+      new THREE.BoxGeometry(0.2, 0.3, 20),
+      woodMaterial
+    );
+    trim.position.set(x, y, z);
+    this.scene.add(trim);
+  }
+  
+  private addSpotlight(x: number, y: number, z: number, color: number = 0xffffff): void {
+    const spot = new THREE.SpotLight(color, 0.5, 15, Math.PI / 6, 0.5);
     spot.position.set(x, y, z);
     spot.target.position.set(x, 0, z);
     spot.castShadow = true;
     this.scene.add(spot);
     this.scene.add(spot.target);
+    this.lights.push(spot);
   }
   
   private addBookshelf(x: number, y: number, z: number): void {
@@ -274,10 +407,11 @@ export class SceneManager {
   private createDesk(): THREE.Object3D {
     const group = new THREE.Group();
     
+    // Premium warm wood material
     const woodMaterial = new THREE.MeshStandardMaterial({
-      color: 0x8b4513,
-      roughness: 0.6,
-      metalness: 0.1
+      color: 0xa0826d, // Rich mahogany
+      roughness: 0.5,
+      metalness: 0.05
     });
     
     // Desktop
@@ -286,6 +420,8 @@ export class SceneManager {
       woodMaterial
     );
     top.position.y = 0.6;
+    top.castShadow = true;
+    top.receiveShadow = true;
     group.add(top);
     
     // Legs
@@ -296,6 +432,7 @@ export class SceneManager {
           woodMaterial
         );
         leg.position.set(x, 0.3, z);
+        leg.castShadow = true;
         group.add(leg);
       }
     }
@@ -492,10 +629,16 @@ export class SceneManager {
   }
   
   private addEmissivePulse(mesh: THREE.Object3D): void {
+    // Add stronger emissive glow to examinable objects
     mesh.traverse((child) => {
       if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
-        child.material.emissive = new THREE.Color(0x4299e1);
-        child.material.emissiveIntensity = 0;
+        // Store original emissive or create new
+        if (!child.material.emissive) {
+          child.material.emissive = new THREE.Color(0x4299e1); // Bright blue
+        } else {
+          child.material.emissive.setHex(0x4299e1);
+        }
+        child.material.emissiveIntensity = 0.2; // Subtle idle glow
       }
     });
   }
@@ -503,7 +646,7 @@ export class SceneManager {
   pulseObject(object: THREE.Object3D): void {
     this.pulsingObjects.set(object, {
       startTime: Date.now(),
-      duration: 1000
+      duration: 1200 // Slightly longer pulse
     });
   }
   
@@ -518,7 +661,9 @@ export class SceneManager {
       
       object.traverse((child) => {
         if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
-          child.material.emissiveIntensity = Math.sin(progress * Math.PI) * 0.5;
+          // Pulse from 0.2 (idle) to 0.8 (peak) and back
+          const pulseIntensity = 0.2 + Math.sin(progress * Math.PI) * 0.6;
+          child.material.emissiveIntensity = pulseIntensity;
         }
       });
       
@@ -531,7 +676,7 @@ export class SceneManager {
       this.pulsingObjects.delete(obj);
       obj.traverse((child) => {
         if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
-          child.material.emissiveIntensity = 0;
+          child.material.emissiveIntensity = 0.2; // Return to idle glow
         }
       });
     });
