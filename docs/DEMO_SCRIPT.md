@@ -1,414 +1,279 @@
-# Heist Escape - Live Pitch Demo Script
+# Heist Escape Demo Script
 
-**Duration:** 5-10 minutes  
-**Participants:** 2 agents (or 1 agent + 1 human)  
-**Objective:** Demonstrate cooperative gameplay, shared state, and the core game loop
-
----
-
-## Pre-Demo Setup
-
-### 1. Start MCP Server
-```bash
-cd packages/mcp-server
-npm run seed        # Initialize D1 database
-npm run dev         # Start Wrangler dev server on :8787
-```
-
-### 2. Start Demo Client (Optional)
-```bash
-cd apps/demo-client
-npm run dev         # Start Vite dev server on :3000
-```
-
-### 3. Session Details
-- **Session ID**: `heist-alpha`
-- **Player 1**: `Agent Alice` (Examiner role)
-- **Player 2**: `Agent Bob` (Operator role)
+**Duration**: 5-10 minutes  
+**Setup**: One host computer (big screen) + guests with phones
 
 ---
 
-## Act 1: Join Session & Lobby (2 minutes)
+## Pre-Demo Setup (1 minute)
 
-### Player 1 (Examiner) Joins
-```
-Tool: join_session
-Params:
-  sessionId: "heist-alpha"
-  playerName: "Agent Alice"
-  role: "examiner"
-```
+**What You Need**:
+- **Host computer** with browser (projected to TV/monitor if possible)
+- **MCP client** (Claude Desktop, Cursor, or mcp-remote) on the host computer
+- **Guest phones** for QR scanning
 
-**Expected Output:**
+**Before the audience arrives**:
+1. Open the stage page: `https://<your-username>.github.io/heist-escape-mcp/`
+2. Click **"Start Demo"** to create a session
+3. Keep the screen visible for guests to see
+4. **Set up the Examiner agent** on the host computer:
+   - Open Claude Desktop/Cursor
+   - Add the MCP server config (see below)
+   - Test connection: Say "Join session X as Agent Examiner"
+
+---
+
+## The Room Demo Flow
+
+### Part 1: The Stage (Host Screen)
+
+**🖥️ Main Screen = Everyone's View**
+
+The host computer is the **primary stage**. Guests watch HERE for:
+- Live 3D room visualization
+- Real-time action ticker (who did what)
+- Shared inventory updates
+- Door unlocks and room transitions
+
+**Host's Role**:
+- Narrator and facilitator
+- Runs the Examiner agent (optional but recommended)
+- Ends session when demo is complete
+
+---
+
+### Part 2: The Lobby (Guest Phones)
+
+**📱 QR Code Onboarding**
+
+Two QR codes are shown on the stage:
+
+1. **Operator (Recommended)** – Phone controls
+   - Big touch buttons for opening drawers
+   - Code input panel
+   - Compact action log and inventory
+   - **Phone-optimized**: No heavy 3D, just controls
+
+2. **Watch (Optional)** – Read-only mirror
+   - Live action feed
+   - Shared inventory
+   - Player list
+   - **Minimal**: Just for following along
+
+**Guest Workflow**:
+1. Scan the **Operator QR** with your phone
+2. Enter your name when prompted
+3. Watch the main screen for the 3D action
+4. Use your phone to tap drawers and enter codes
+
+---
+
+## Demo Script (5 minutes)
+
+### Opening (30 seconds)
+
+**You (Host):**
+> "You're all agents who broke into this art museum after hours. Your goal: reach the Director's Office vault on the top floor. But the building is locked down, and you'll need to solve puzzles to unlock each door."
+
+**Show the stage screen:**
+- QR codes prominently displayed
+- "Session Active" banner with session ID
+
+**Invite guests:**
+> "Scan the Operator QR with your phone. You'll get touch controls. The main action happens here on the big screen."
+
+---
+
+### Act 1: Museum Lobby (2 minutes)
+
+**Set the scene:**
+> "We're starting in the Museum Lobby. There's a security desk, a statue, and a locked door to the Exhibition Hall. Let's explore."
+
+**Action 1: The Examiner Agent (on host computer)**
+
+**You (via Claude/Cursor MCP):**
+> "Agent Examiner, join the session and look around."
+
+**The agent will respond** with a description of the room, then:
+> "Agent, examine the security desk."
+
+**Stage updates**:
+- Action ticker shows: `🕵️ Agent Examiner examined Security Desk`
+- Agent finds: *"There's a logbook here with a suspicious entry..."*
+
+**Action 2: Guest Participation (phones)**
+
+**You (to guests):**
+> "Someone, tap 'Open Drawer' on your phone. Try drawer #101."
+
+**Stage updates**:
+- Inventory toast pops up: *"Found: Maintenance Key"*
+- Ticker shows: `📱 Guest opened Drawer #101 at Security Desk`
+
+**Collaborative puzzle:**
+> "Now we need a 4-digit code. Agent, search the logbook for clues."
+
+**Agent reports**:
+> *"The last entry says: 'System reset to gallery count.'"*
+
+**You (narrating):**
+> "There are 1847 paintings in the gallery. Let's try that. Guest, enter 1847 on your phone."
+
+**Stage updates**:
+- Door animation: Exhibition Hall door UNLOCKS
+- Ticker: `✅ Exhibition Hall unlocked! Code 1847 accepted.`
+
+---
+
+### Act 2: Exhibition Hall (2 minutes)
+
+**Transition:**
+> "Agent, use the Maintenance Key to enter the Exhibition Hall."
+
+**Stage updates**:
+- 3D scene transitions to new room
+- Room title changes: "Exhibition Hall"
+
+**New exploration:**
+
+**Agent:**
+> "Agent, look around. What do you see?"
+
+**Agent describes** paintings, a pedestal, a locked case.
+
+**Guest action:**
+> "Guest, open drawer #201. There's a UV flashlight inside."
+
+**The payoff:**
+> "Agent, examine the painting with the UV flashlight in inventory."
+
+**Agent reveals**:
+> *"Hidden message under UV: 'The artist's birth year is the code.'"*
+
+**Research phase:**
+> "Agent, check the plaque. Who's the artist?"
+
+**Agent:**
+> *"Painting by Ada Lovelace, 1815-1852."*
+
+**Code entry (guest phone):**
+> "Guest, enter 1815."
+
+**Stage updates**:
+- Conservation Room door unlocks
+- Inventory shows UV Flashlight being used
+- Ticker celebrates the team's progress
+
+---
+
+### Act 3: Speed Run (1 minute)
+
+**Momentum:**
+> "Let's see how fast you can clear the next rooms. Agent, take the lead. Guests, watch for code prompts."
+
+**Quick sequence**:
+1. **Conservation Room**: Decode message → unlock Archives
+2. **Archives**: Combine items → unlock Director's Office
+3. **Director's Office**: Final vault code
+
+**Throughout**:
+- Stage shows real-time updates
+- Ticker moves fast
+- Inventory fills up
+- Agent and guests work in parallel
+
+---
+
+### Closing (30 seconds)
+
+**Victory state:**
+> "You've reached the vault! The Director's collection is yours."
+
+**Stage displays**:
+- Final room: Director's Office
+- Full inventory displayed
+- Action log recap scrolling
+
+**Takeaway:**
+> "This is a cooperative MCP game. The agent has knowledge and reasoning. Humans have tactile controls and intuition. Together, you escape."
+
+---
+
+## Post-Demo Q&A
+
+**Common Questions**:
+
+**Q: Can I play this remotely?**
+> Yes! Share the join links instead of QR codes. The stage can be a shared screen on Zoom.
+
+**Q: How do I set up my own MCP server?**
+> See `docs/DEPLOY.md` for full instructions. You'll need a Cloudflare Workers account (free tier works).
+
+**Q: Can I add my own puzzles?**
+> Absolutely! Edit `packages/mcp-server/seed.sql` to add rooms, objects, and codes. Redeploy the Worker.
+
+**Q: What if the agent gets stuck?**
+> Use hints! Type: "Agent, get hint for puzzle_code_museum_1"
+
+**Q: Can I use a different agent?**
+> Yes! Any MCP client works: Claude Desktop, Cursor, Cline, mcp-remote, or custom clients.
+
+---
+
+## MCP Config for the Examiner Agent
+
+Add this to your Claude Desktop or Cursor MCP config:
+
 ```json
 {
-  "success": true,
-  "message": "Agent Alice joined the heist!",
-  "state": {
-    "currentRoom": 1,
-    "players": [{"name": "Agent Alice", "role": "examiner"}],
-    "inventory": []
+  "mcpServers": {
+    "heist-escape": {
+      "url": "https://heist-escape-mcp.YOUR_ACCOUNT.workers.dev/mcp",
+      "transport": "sse"
+    }
   }
 }
 ```
 
-### Player 2 (Operator) Joins
-```
-Tool: join_session
-Params:
-  sessionId: "heist-alpha"
-  playerName: "Agent Bob"
-  role: "operator"
-```
+**Replace `YOUR_ACCOUNT`** with your Cloudflare Workers subdomain.
 
-**Expected Output:**
-```json
-{
-  "success": true,
-  "message": "Agent Bob joined the heist!",
-  "state": {
-    "currentRoom": 1,
-    "players": [
-      {"name": "Agent Alice", "role": "examiner"},
-      {"name": "Agent Bob", "role": "operator"}
-    ]
-  }
-}
-```
-
-### Both Players Look Around
-```
-Tool: look_around
-Params:
-  sessionId: "heist-alpha"
-  playerId: "Agent Alice"
-```
-
-**Expected Output:**
-```
-**Museum Lobby**
-
-A bright, sunlit lobby with polished marble floors...
-
-*Warm morning light streams through floor-to-ceiling windows...*
-
-**Visible Objects:**
-- reception-desk: A polished mahogany reception desk
-- visitor-log: A leather-bound visitor log
-- poster-board: A promotional poster board
-- flower-arrangement: A large floral arrangement
-
-**Exits:** gallery-a
-**Can progress:** No (find keys/codes first)
-```
-
-**🎭 Demo Note:** Point out the light, welcoming atmosphere (not dark/gritty).
+Then, in Claude/Cursor, say:
+> "Join session ABC123 as Agent Examiner"
 
 ---
 
-## Act 2: Cooperative Discovery (3 minutes)
+## Tips for a Great Demo
 
-### Alice (Examiner) Reads Briefing
-```
-Tool: examine_object
-Params:
-  sessionId: "heist-alpha"
-  playerId: "Agent Alice"
-  objectName: "poster-board"
-```
-
-**Expected Output:**
-```
-**poster-board**
-
-A corkboard displays colorful posters...
-Preview - See briefing for assembly rule: ORDER BY ROOM NUMBER
-
-💡 Hint: The sticky note mentions an assembly rule...
-```
-
-**🎭 Alice announces:** "The vault code is assembled from digits in each room, ordered by room number!"
-
-### Bob (Operator) Opens Desk Drawer
-```
-Tool: open_drawer
-Params:
-  sessionId: "heist-alpha"
-  playerId: "Agent Bob"
-  drawerId: "reception-desk-bottom"
-```
-
-**Expected Output:**
-```
-**Drawer Contents:**
-
-Emergency procedures binder, first aid kit, and a small notebook
-with "Code audit: Room 1 = 3" written on the first page
-```
-
-**🎭 Bob announces:** "Found the first digit: **3**"
-
-### Alice Discovers the Key
-```
-Tool: examine_object
-Params:
-  sessionId: "heist-alpha"
-  playerId: "Agent Alice"
-  objectName: "flower-arrangement"
-```
-
-**Expected Output:**
-```
-**flower-arrangement**
-
-A stunning arrangement of white lilies and jasmine...
-
-🔍 **Discovery:** Searching through the flowers, you find a brass key
-attached to a tag reading 'Gallery A Access'! (Use use_item to take it)
-```
-
-### Alice Takes the Key
-```
-Tool: use_item
-Params:
-  sessionId: "heist-alpha"
-  playerId: "Agent Alice"
-  itemName: "gallery-a-key"
-  action: "take"
-```
-
-**Expected Output:**
-```
-You carefully extract the brass key from the flowers...
-
-✅ **gallery-a-key** added to shared team inventory
-```
-
-### Bob Checks Inventory (Shared State Demo)
-```
-Tool: get_inventory
-Params:
-  sessionId: "heist-alpha"
-```
-
-**Expected Output:**
-```
-**Team Inventory:**
-
-- **gallery-a-key** (taken by Agent Alice)
-```
-
-**🎭 Demo Note:** Bob sees Alice's pickup immediately - shared state!
-
----
-
-## Act 3: Unlock & Progress (2 minutes)
-
-### Bob Uses the Shared Key
-```
-Tool: use_item
-Params:
-  sessionId: "heist-alpha"
-  playerId: "Agent Bob"
-  itemName: "gallery-a-key"
-  action: "unlock"
-  target: "archives-door"
-```
-
-**Expected Output:**
-```
-The brass key fits perfectly! The Archives door swings open silently.
-
-🚪 **archives** is now unlocked!
-```
-
-**🎭 Demo Note:** Bob uses Alice's key - cooperative inventory sharing!
-
-### Both Players Move to Room 2
-```
-Tool: use_item
-Params:
-  sessionId: "heist-alpha"
-  playerId: "Agent Alice"
-  itemName: "archives-door"
-  action: "open"
-  target: "gallery-a"
-```
-
-**Expected Output:**
-```
-Moving to gallery-a...
-
-📍 Moved to room 2. Use look_around to survey the new area.
-```
-
-### Look Around Room 2
-```
-Tool: look_around
-Params:
-  sessionId: "heist-alpha"
-  playerId: "Agent Alice"
-```
-
-**Expected Output:**
-```
-**Gallery A - Renaissance Wing**
-
-An elegant gallery with cream-colored walls...
-
-**Visible Objects:**
-- display-case-west: A glass display case
-- painting-landscape: A large pastoral landscape painting
-- archives-door: A locked brass door
-
-**Exits:** lobby, archives
-```
-
-### Alice Finds Second Digit
-```
-Tool: examine_object
-Params:
-  sessionId: "heist-alpha"
-  playerId: "Agent Alice"
-  objectName: "display-case-west"
-```
-
-**Expected Output:**
-```
-**display-case-west**
-
-The case contains Renaissance-era jewelry...
-One small note card: "The vault code digit for Room 2 is: 8"
-```
-
-**🎭 Alice announces:** "Second digit: **8**. So far we have 3-8..."
-
----
-
-## Act 4: Tease Room 3+ (1 minute)
-
-### Check Recent Actions (Cooperation Log)
-```
-Tool: get_recent_actions
-Params:
-  sessionId: "heist-alpha"
-  limit: 5
-```
-
-**Expected Output:**
-```json
-{
-  "actions": [
-    {
-      "player": "Agent Alice",
-      "action": "examine",
-      "result": "Examined display-case-west",
-      "timestamp": 1234567890
-    },
-    {
-      "player": "Agent Bob",
-      "action": "unlock",
-      "result": "Bob unlocked the archives door",
-      "timestamp": 1234567880
-    },
-    ...
-  ]
-}
-```
-
-**🎭 Demo Note:** Both players see the full action history.
-
-### Get Hints (Optional)
-```
-Tool: get_hints
-Params:
-  sessionId: "heist-alpha"
-  playerId: "Agent Bob"
-  roomId: 2
-```
-
-**Expected Output:**
-```
-**Hints for Room 2:**
-
-1. The archives door needs a key. You may have found it in the previous room.
-2. Display cases often have information cards. Examine them carefully.
-
-*Hints used: 2/3*
-```
-
----
-
-## Closing Notes (30 seconds)
-
-### What We Demonstrated
-1. ✅ **Cooperative Join**: Two agents in one session
-2. ✅ **Shared Inventory**: Key taken by Alice, used by Bob
-3. ✅ **Shared State**: Both see action log and inventory updates
-4. ✅ **Progressive Puzzles**: Assembly rule + digit collection
-5. ✅ **Light Theme**: Bright museum, not dark/cyberpunk
-6. ✅ **MCP Tools**: All actions via MCP server tools
-
-### Remaining Rooms (Not Shown)
-- **Room 3**: Card catalog puzzle (enter code 7734), third digit (9)
-- **Room 4**: Vault keypad, enter full code (3891)
-- **Room 5**: Claim the Sunburst Diamond, heist complete!
-
-### Full Playthrough
-- **Pitch Path**: 5-10 minutes (Rooms 1-2)
-- **Complete Game**: 30-45 minutes (all 5 rooms)
-
----
-
-## Live Demo Checklist
-
-- [ ] MCP server running (`npm run dev`)
-- [ ] D1 database seeded (`npm run seed`)
-- [ ] Two MCP clients ready (agents or MCP Inspector)
-- [ ] Session ID prepared (`heist-alpha`)
-- [ ] Talking points: cooperation, shared state, light theme
-- [ ] Solution guide ready (for hints if demo gets stuck)
-- [ ] Three.js client running (optional visual companion)
-
----
-
-## Browser Client Demo (Optional)
-
-If demoing the three.js client:
-1. Open `http://localhost:3000` in two browser tabs
-2. Both enter session ID `heist-alpha`
-3. Click objects in the 3D scene to examine
-4. Show inventory updates in real-time
-5. Demonstrate light-themed dioramas
-
-**Visual Highlights:**
-- Bright marble floors, white walls
-- Soft lighting (hemisphere + directional)
-- Clean UI panels (light backgrounds, dark text)
-- Emissive pulse on interactable objects
-- CSS2D overlays for inventory/examine
+1. **Rehearse once** before the audience. Make sure the agent connects and the QR codes work.
+2. **Keep it moving**: Don't let the agent overthink. Prompt it with direct questions.
+3. **Celebrate team moments**: When the agent finds a clue and a guest enters the code, cheer!
+4. **Use the stage**: Point at the screen when actions happen. Make it a show.
+5. **Phones are companions**: Remind guests the main action is on the big screen.
+6. **Pause for questions**: After each room unlock, ask if anyone has questions.
 
 ---
 
 ## Troubleshooting
 
-### MCP Server Not Responding
-- Check `wrangler dev` is running
-- Verify D1 database seeded successfully
-- Test with `curl http://localhost:8787/` (should return server info)
+**Agent won't connect?**
+- Check MCP config URL
+- Restart Claude Desktop
+- Test with `mcp-remote list-tools` first
 
-### Objects Not Found
-- Run `npm run seed` again to reset database
-- Check object names match exactly (case-sensitive)
-- Use `look_around` to see available objects
+**QR codes don't scan?**
+- Make sure they point to production URL (not localhost)
+- Check `VITE_API_BASE` in `.env.production`
+- Increase QR code size in `StagePage.ts` if needed
 
-### Shared State Not Syncing
-- Both players must use the same `sessionId`
-- Durable Object ensures strong consistency
-- Check action log with `get_recent_actions`
+**Phone controls lag?**
+- Normal with 2-second polling
+- Can reduce polling interval in `OperatorPage.ts`
+
+**Stage doesn't update?**
+- Check browser console for API errors
+- Verify Worker is deployed and D1 is seeded
+- Refresh the page to reset
 
 ---
 
-**End of Demo Script**
-
-Break a leg! 🎭💎
+**Break a leg!** 🎭💎

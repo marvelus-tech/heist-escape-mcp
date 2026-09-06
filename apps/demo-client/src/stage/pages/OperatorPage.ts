@@ -39,6 +39,7 @@ export class OperatorPage {
         <header class="operator-header">
           <h1>📱 Operator Controls</h1>
           <p class="session-badge">Session: <code>${this.sessionId}</code></p>
+          <p class="companion-note">Phone companion • Watch the main screen for the 3D stage</p>
         </header>
         
         <div class="join-form">
@@ -317,6 +318,13 @@ export class OperatorPage {
       
       .session-badge {
         font-size: 0.875rem;
+        margin-bottom: 0.25rem;
+      }
+      
+      .companion-note {
+        font-size: 0.875rem;
+        color: #718096;
+        font-style: italic;
       }
       
       .session-badge code {

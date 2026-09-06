@@ -80,43 +80,60 @@ export class StagePage {
   }
   
   private renderActiveSession(): string {
-    const baseUrl = window.location.origin + window.location.pathname.replace(/\/$/, '');
-    const operatorUrl = `${baseUrl}/#/join?s=${this.sessionId}&role=operator`;
-    const examinerUrl = `${baseUrl}/#/join?s=${this.sessionId}&role=examiner`;
+    // Use production URL for links (not localhost) - must work from phones
+    const baseUrl = import.meta.env.VITE_BASE_PATH === '/' 
+      ? window.location.origin 
+      : window.location.origin + import.meta.env.VITE_BASE_PATH.replace(/\/$/, '');
+    
+    const operatorUrl = `${baseUrl}#/join?s=${this.sessionId}&role=operator`;
+    const examinerUrl = `${baseUrl}#/join?s=${this.sessionId}&role=examiner`;
+    const watchUrl = `${baseUrl}#/join?s=${this.sessionId}&role=watch`;
     
     return `
       <div class="active-session">
         <div class="session-info">
           <h2>Session Active: <code>${this.sessionId}</code></h2>
-          <p>Scan QR codes or share links to join</p>
+          <p class="room-note">🖥️ This screen is the main stage. Guests scan QR to join as companions.</p>
         </div>
         
         <div class="qr-lobby">
-          <div class="qr-section">
-            <h3>📱 Operator (Human)</h3>
+          <div class="qr-section primary">
+            <h3>📱 Operator (Recommended)</h3>
             <div id="operator-qr" class="qr-code"></div>
-            <p class="qr-url">${operatorUrl}</p>
+            <p class="qr-description">Phone controls: open drawers, enter codes</p>
             <button class="copy-btn" data-url="${operatorUrl}">Copy Link</button>
           </div>
           
-          <div class="qr-section">
-            <h3>🕵️ Examiner (Agent)</h3>
-            <div id="examiner-qr" class="qr-code"></div>
-            <p class="qr-url">${examinerUrl}</p>
-            <button class="copy-btn" data-url="${examinerUrl}">Copy Link</button>
+          <div class="qr-section secondary">
+            <h3>👁️ Watch Mode</h3>
+            <div id="watch-qr" class="qr-code"></div>
+            <p class="qr-description">Read-only: see actions and inventory</p>
+            <button class="copy-btn" data-url="${watchUrl}">Copy Link</button>
           </div>
         </div>
         
         <div class="stage-view">
-          <div class="action-ticker" id="action-ticker">
-            <h3>Live Actions</h3>
-            <div id="action-list"></div>
+          <div class="scene-container" id="scene-container">
+            <canvas id="stage-canvas"></canvas>
+            <div class="room-title" id="room-title">Museum Lobby</div>
           </div>
           
-          <div class="inventory-display" id="inventory-display">
-            <h3>Shared Inventory</h3>
-            <div id="inventory-list">Empty</div>
+          <div class="stage-sidebar">
+            <div class="action-ticker" id="action-ticker">
+              <h3>Live Actions</h3>
+              <div id="action-list"></div>
+            </div>
+            
+            <div class="inventory-display" id="inventory-display">
+              <h3>Shared Inventory</h3>
+              <div id="inventory-list">Empty</div>
+            </div>
           </div>
+        </div>
+        
+        <div class="host-note">
+          <strong>💡 Host Tip:</strong> Run Examiner agent (Claude/Cursor) on this computer. 
+          Agent discoveries will appear in the action ticker above.
         </div>
         
         <button id="end-session-btn" class="secondary-button">End Session</button>
@@ -152,7 +169,33 @@ export class StagePage {
     // If session active, generate QR codes and start polling
     if (this.sessionId) {
       this.generateQRCodes();
+      this.initStageScene();
       this.startPolling();
+    }
+  }
+  
+  private initStageScene() {
+    // Initialize simple 3D scene for the stage
+    // This is a placeholder - keeps it on the host screen only
+    const canvas = document.getElementById('stage-canvas') as HTMLCanvasElement;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        canvas.width = canvas.offsetWidth;
+        canvas.height = canvas.offsetHeight;
+        
+        // Simple placeholder scene
+        ctx.fillStyle = '#f5f7fa';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        ctx.fillStyle = '#667eea';
+        ctx.font = '24px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Museum Lobby', canvas.width / 2, canvas.height / 2);
+        ctx.fillStyle = '#718096';
+        ctx.font = '16px sans-serif';
+        ctx.fillText('3D scene will display here', canvas.width / 2, canvas.height / 2 + 40);
+      }
     }
   }
   
@@ -186,21 +229,25 @@ export class StagePage {
   }
   
   private generateQRCodes() {
-    // Use qrcode library to generate QR codes
-    const baseUrl = window.location.origin + window.location.pathname.replace(/\/$/, '');
-    const operatorUrl = `${baseUrl}/#/join?s=${this.sessionId}&role=operator`;
-    const examinerUrl = `${baseUrl}/#/join?s=${this.sessionId}&role=examiner`;
+    // Use production URL for QR codes (not localhost)
+    // QR codes must work when scanned from phones across the room
+    const baseUrl = import.meta.env.VITE_BASE_PATH === '/' 
+      ? window.location.origin 
+      : window.location.origin + import.meta.env.VITE_BASE_PATH.replace(/\/$/, '');
     
-    // Generate QR codes (simplified - using data URLs)
+    const operatorUrl = `${baseUrl}#/join?s=${this.sessionId}&role=operator`;
+    const watchUrl = `${baseUrl}#/join?s=${this.sessionId}&role=watch`;
+    
+    // Generate QR codes using external service (works across devices)
     const operatorQR = document.getElementById('operator-qr');
-    const examinerQR = document.getElementById('examiner-qr');
+    const watchQR = document.getElementById('watch-qr');
     
     if (operatorQR) {
-      operatorQR.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(operatorUrl)}" alt="Operator QR" />`;
+      operatorQR.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(operatorUrl)}" alt="Operator QR" style="width: 250px; height: 250px;" />`;
     }
     
-    if (examinerQR) {
-      examinerQR.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(examinerUrl)}" alt="Examiner QR" />`;
+    if (watchQR) {
+      watchQR.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(watchUrl)}" alt="Watch QR" style="width: 200px; height: 200px;" />`;
     }
   }
   
@@ -395,9 +442,9 @@ export class StagePage {
       
       .qr-lobby {
         display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 3rem;
-        margin-bottom: 3rem;
+        grid-template-columns: 1.5fr 1fr;
+        gap: 2rem;
+        margin-bottom: 2rem;
         padding: 2rem;
         background: #f7fafc;
         border-radius: 12px;
@@ -405,6 +452,17 @@ export class StagePage {
       
       .qr-section {
         text-align: center;
+        padding: 1.5rem;
+        background: white;
+        border-radius: 12px;
+      }
+      
+      .qr-section.primary {
+        border: 3px solid #48bb78;
+      }
+      
+      .qr-section.secondary {
+        border: 2px solid #cbd5e0;
       }
       
       .qr-section h3 {
@@ -421,26 +479,18 @@ export class StagePage {
         display: inline-block;
       }
       
-      .qr-url {
+      .qr-description {
         font-size: 0.875rem;
-        color: #718096;
-        margin: 1rem 0;
-        word-break: break-all;
+        color: #4a5568;
+        margin: 0.75rem 0;
+        min-height: 2.5em;
       }
       
-      .copy-btn {
-        padding: 0.75rem 1.5rem;
-        background: #48bb78;
-        color: white;
-        border: none;
-        border-radius: 6px;
-        cursor: pointer;
-        font-weight: 600;
-        transition: background 0.2s;
-      }
-      
-      .copy-btn:hover {
-        background: #38a169;
+      .room-note {
+        font-size: 1rem;
+        color: #4a5568;
+        margin-top: 0.5rem;
+        font-style: italic;
       }
       
       .stage-view {
@@ -448,6 +498,47 @@ export class StagePage {
         grid-template-columns: 2fr 1fr;
         gap: 2rem;
         margin-bottom: 2rem;
+      }
+      
+      .scene-container {
+        position: relative;
+        background: #2d3748;
+        border-radius: 12px;
+        overflow: hidden;
+        min-height: 400px;
+      }
+      
+      #stage-canvas {
+        width: 100%;
+        height: 400px;
+        display: block;
+      }
+      
+      .room-title {
+        position: absolute;
+        bottom: 1rem;
+        left: 1rem;
+        background: rgba(255, 255, 255, 0.95);
+        padding: 0.75rem 1.5rem;
+        border-radius: 8px;
+        font-weight: 700;
+        color: #2d3748;
+        font-size: 1.125rem;
+      }
+      
+      .stage-sidebar {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+      }
+      
+      .host-note {
+        padding: 1rem 1.5rem;
+        background: #fef5e7;
+        border-left: 4px solid #f39c12;
+        border-radius: 8px;
+        margin-bottom: 1.5rem;
+        color: #856404;
       }
       
       .action-ticker, .inventory-display {

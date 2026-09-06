@@ -5,11 +5,12 @@
 import { StagePage } from './pages/StagePage';
 import { ExaminerPage } from './pages/ExaminerPage';
 import { OperatorPage } from './pages/OperatorPage';
+import { WatchPage } from './pages/WatchPage';
 
 export class StageApp {
   private apiBase: string;
   private mcpUrl: string;
-  private currentPage: StagePage | ExaminerPage | OperatorPage | null = null;
+  private currentPage: StagePage | ExaminerPage | OperatorPage | WatchPage | null = null;
   
   constructor(apiBase: string, mcpUrl: string) {
     this.apiBase = apiBase;
@@ -49,6 +50,8 @@ export class StageApp {
         this.currentPage = new ExaminerPage(this.apiBase, this.mcpUrl, sessionId);
       } else if (role === 'operator') {
         this.currentPage = new OperatorPage(this.apiBase, sessionId);
+      } else if (role === 'watch') {
+        this.currentPage = new WatchPage(this.apiBase, sessionId);
       } else {
         alert('Invalid role: ' + role);
         window.location.hash = '';
