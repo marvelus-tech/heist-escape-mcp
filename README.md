@@ -109,14 +109,49 @@ Client runs at `http://localhost:3000`
 
 ### 5. Play the Game
 
-#### Option A: MCP Inspector (CLI)
+#### Option A: MCP Clients (Recommended)
+
+The server exposes a real MCP endpoint at `/mcp` using Streamable HTTP transport. Connect any MCP client:
+
+**MCP Inspector** (easiest for testing):
 ```bash
 npx @modelcontextprotocol/inspector@latest
 # Open http://localhost:5173
 # Connect to: http://localhost:8787/mcp
 ```
 
-#### Option B: Browser Client
+**Claude Desktop** (`claude_desktop_config.json`):
+```json
+{
+  "mcpServers": {
+    "heist-escape": {
+      "command": "npx",
+      "args": ["mcp-remote", "http://localhost:8787/mcp"]
+    }
+  }
+}
+```
+
+Restart Claude Desktop after updating config.
+
+**Cursor** (Settings → Features → Model Context Protocol):
+```json
+{
+  "mcpServers": {
+    "heist-escape": {
+      "command": "npx",
+      "args": ["mcp-remote", "http://localhost:8787/mcp"]
+    }
+  }
+}
+```
+
+**mcp-remote CLI**:
+```bash
+npx mcp-remote http://localhost:8787/mcp
+```
+
+#### Option B: Browser Client (Three.js Demo)
 1. Open `http://localhost:3000`
 2. Enter session ID: `heist-alpha`
 3. Enter your player name
@@ -124,8 +159,9 @@ npx @modelcontextprotocol/inspector@latest
 5. Click **Join Heist**
 6. Click objects in the 3D scene to interact
 
-#### Option C: Two Agents (Recommended)
-Launch two MCP-enabled agents with the server connected:
+#### Option C: Direct HTTP API (for testing)
+#### Option D: Two MCP Agents (Best for Cooperative Demo)
+Launch two MCP-enabled agents (Claude Desktop, Cursor, etc.) with the server connected:
 ```json
 {
   "mcpServers": {
@@ -247,6 +283,8 @@ https://heist-escape-mcp.<your-account>.workers.dev/mcp
 ```
 
 ### Connect Remote MCP Server
+
+**Claude Desktop**:
 ```json
 {
   "mcpServers": {
@@ -256,6 +294,11 @@ https://heist-escape-mcp.<your-account>.workers.dev/mcp
     }
   }
 }
+```
+
+**Cursor / MCP Inspector**:
+```
+https://heist-escape-mcp.<your-account>.workers.dev/mcp
 ```
 
 ### Build Demo Client

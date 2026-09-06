@@ -1,23 +1,30 @@
+import { createMcpHandler } from "agents/mcp/server";
+import { createHeistMcpServer } from "./mcp-server";
 import { GameSession } from "./game-session";
 import type { Env } from "./types";
 
 /**
- * Simple HTTP-based MCP-like API
+ * Heist Escape MCP Worker
  * 
- * Provides REST endpoints that wrap the game session Durable Object
- * This is a simplified approach that allows MCP clients to call tools via HTTP
+ * Dual-surface Worker serving:
+ * 1. MCP endpoint at /mcp (Streamable HTTP transport for MCP clients)
+ * 2. REST API at /api/* (for three.js demo client)
+ * 
+ * Both surfaces talk to the same GameSession Durable Object for consistent state.
  */
-
-interface ToolCall {
-  tool: string;
-  params: Record<string, any>;
-}
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     
-    // CORS headers
+    // ===== MCP Endpoint (Streamable HTTP) =====
+    // For MCP clients: Claude Desktop, Cursor, mcp-remote, Inspector
+    if (url.pathname === "/mcp") {
+      const mcpHandler = createMcpHandler(() => createHeistMcpServer(env));
+      return mcpHandler(request, env, ctx);
+    }
+    
+    // ===== CORS Headers =====
     const corsHeaders = {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
@@ -30,7 +37,7 @@ export default {
       return new Response(null, { headers: corsHeaders });
     }
     
-    // Health check / info endpoint
+    // ===== Health Check / Info Endpoint =====
     if (url.pathname === "/" && request.method === "GET") {
       return new Response(
         JSON.stringify({
@@ -39,8 +46,15 @@ export default {
           description: "Cooperative escape-room ARG/heist game via MCP",
           endpoints: {
             "/": "Server info (this endpoint)",
-            "/api/{tool}": "Call game tools via POST with JSON body"
+            "/mcp": "MCP endpoint (Streamable HTTP) - connect MCP clients here",
+            "/api/{tool}": "REST API for three.js demo client"
           },
+          mcp_clients: [
+            "Claude Desktop",
+            "Cursor",
+            "MCP Inspector (npx @modelcontextprotocol/inspector@latest)",
+            "mcp-remote (npx mcp-remote http://localhost:8787/mcp)"
+          ],
           tools: [
             "join_session",
             "get_state",
@@ -61,13 +75,14 @@ export default {
       );
     }
     
-    // API endpoints for tools
+    // ===== REST API Endpoints =====
+    // For three.js demo client
     if (url.pathname.startsWith("/api/") && request.method === "POST") {
       const toolName = url.pathname.slice(5); // Remove "/api/"
       
       try {
         const params = await request.json() as Record<string, any>;
-        const result = await handleToolCall(toolName, params, env);
+        const result = await handleRestToolCall(toolName, params, env);
         
         return new Response(
           JSON.stringify(result, null, 2),
@@ -85,7 +100,13 @@ export default {
   }
 };
 
-async function handleToolCall(tool: string, params: Record<string, any>, env: Env): Promise<any> {
+/**
+ * REST API Handler
+ * 
+ * Handles REST tool calls from the three.js demo client.
+ * Calls the same GameSession DO methods as the MCP tools.
+ */
+async function handleRestToolCall(tool: string, params: Record<string, any>, env: Env): Promise<any> {
   const sessionId = params.sessionId;
   
   if (!sessionId) {
