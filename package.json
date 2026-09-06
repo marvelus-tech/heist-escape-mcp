@@ -1,0 +1,22 @@
+{
+  "name": "heist-escape-mcp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cooperative escape-room ARG/heist MCP server with three.js demo client",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm-run-all --parallel dev:*",
+    "dev:server": "npm run dev --workspace=packages/mcp-server",
+    "dev:client": "npm run dev --workspace=apps/demo-client",
+    "build": "npm run build --workspaces",
+    "deploy": "npm run deploy --workspace=packages/mcp-server",
+    "seed": "npm run seed --workspace=packages/mcp-server"
+  },
+  "devDependencies": {
+    "npm-run-all": "^4.1.5",
+    "typescript": "^5.3.3"
+  }
+}
