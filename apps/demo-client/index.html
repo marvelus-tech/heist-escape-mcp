@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Heist Escape - Cooperative Museum Heist</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      overflow: hidden;
+      background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    }
+    
+    #app {
+      width: 100vw;
+      height: 100vh;
+      position: relative;
+    }
+    
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    
+    /* UI Overlays - Light Theme */
+    .ui-panel {
+      position: absolute;
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+      color: #2c3e50;
+      border: 1px solid rgba(255, 255, 255, 0.5);
+    }
+    
+    #session-panel {
+      top: 20px;
+      left: 20px;
+      max-width: 320px;
+    }
+    
+    #inventory-panel {
+      top: 20px;
+      right: 20px;
+      max-width: 280px;
+    }
+    
+    #action-log {
+      bottom: 20px;
+      left: 20px;
+      max-width: 400px;
+      max-height: 200px;
+      overflow-y: auto;
+      font-size: 13px;
+    }
+    
+    #examine-panel {
+      bottom: 20px;
+      right: 20px;
+      max-width: 380px;
+      max-height: 350px;
+      overflow-y: auto;
+      display: none;
+    }
+    
+    #examine-panel.visible {
+      display: block;
+    }
+    
+    .panel-title {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      color: #1a202c;
+      border-bottom: 2px solid #4299e1;
+      padding-bottom: 8px;
+    }
+    
+    .input-group {
+      margin-bottom: 12px;
+    }
+    
+    .input-group label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 4px;
+      color: #4a5568;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    
+    .input-group input,
+    .input-group select {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #cbd5e0;
+      border-radius: 6px;
+      font-size: 14px;
+      background: white;
+      color: #2c3e50;
+    }
+    
+    .input-group input:focus,
+    .input-group select:focus {
+      outline: none;
+      border-color: #4299e1;
+      box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.1);
+    }
+    
+    button {
+      width: 100%;
+      padding: 10px 16px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+    
+    button:active {
+      transform: translateY(0);
+    }
+    
+    button:disabled {
+      background: #cbd5e0;
+      cursor: not-allowed;
+      transform: none;
+    }
+    
+    .inventory-item {
+      padding: 8px 12px;
+      margin: 6px 0;
+      background: linear-gradient(135deg, #f6f8fb 0%, #e9ecef 100%);
+      border-radius: 6px;
+      border-left: 3px solid #48bb78;
+      font-size: 13px;
+      font-weight: 500;
+      color: #2d3748;
+    }
+    
+    .inventory-empty {
+      color: #718096;
+      font-style: italic;
+      font-size: 13px;
+      text-align: center;
+      padding: 12px;
+    }
+    
+    .action-entry {
+      padding: 6px 10px;
+      margin: 4px 0;
+      background: rgba(237, 242, 247, 0.8);
+      border-radius: 4px;
+      font-size: 12px;
+      border-left: 2px solid #4299e1;
+      color: #2d3748;
+    }
+    
+    .action-entry .player {
+      font-weight: 600;
+      color: #667eea;
+    }
+    
+    .action-entry .timestamp {
+      font-size: 10px;
+      color: #a0aec0;
+      margin-left: 6px;
+    }
+    
+    #room-title {
+      font-size: 16px;
+      font-weight: 700;
+      margin-top: 12px;
+      padding: 8px 12px;
+      background: linear-gradient(135deg, #f6ad55 0%, #ed8936 100%);
+      color: white;
+      border-radius: 6px;
+      text-align: center;
+    }
+    
+    .connection-status {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #48bb78;
+      margin-right: 8px;
+      animation: pulse 2s infinite;
+    }
+    
+    .connection-status.disconnected {
+      background: #f56565;
+      animation: none;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    
+    .clickable-hint {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(255, 255, 255, 0.95);
+      padding: 20px 32px;
+      border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+      font-size: 16px;
+      font-weight: 600;
+      color: #2c3e50;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    
+    .clickable-hint.visible {
+      opacity: 1;
+    }
+    
+    #loading {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(255, 255, 255, 0.95);
+      padding: 40px;
+      border-radius: 16px;
+      box-shadow: 0 12px 48px rgba(0, 0, 0, 0.2);
+      text-align: center;
+      color: #2c3e50;
+      font-size: 20px;
+      font-weight: 600;
+    }
+    
+    .spinner {
+      width: 50px;
+      height: 50px;
+      margin: 20px auto;
+      border: 4px solid #e2e8f0;
+      border-top-color: #667eea;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <canvas id="scene"></canvas>
+    
+    <div id="loading">
+      <div class="spinner"></div>
+      Loading Museum...
+    </div>
+    
+    <!-- Session Panel -->
+    <div id="session-panel" class="ui-panel">
+      <div class="panel-title">
+        <span class="connection-status" id="connection-status"></span>
+        Heist Control
+      </div>
+      <div class="input-group">
+        <label>Session ID</label>
+        <input type="text" id="session-input" placeholder="heist-alpha" value="heist-alpha">
+      </div>
+      <div class="input-group">
+        <label>Player Name</label>
+        <input type="text" id="player-input" placeholder="Agent Smith">
+      </div>
+      <div class="input-group">
+        <label>Role</label>
+        <select id="role-input">
+          <option value="agent">Agent</option>
+          <option value="examiner">Examiner</option>
+          <option value="operator">Operator</option>
+        </select>
+      </div>
+      <button id="join-btn">Join Heist</button>
+      <div id="room-title">Not Connected</div>
+    </div>
+    
+    <!-- Inventory Panel -->
+    <div id="inventory-panel" class="ui-panel">
+      <div class="panel-title">Team Inventory</div>
+      <div id="inventory-list">
+        <div class="inventory-empty">No items yet...</div>
+      </div>
+    </div>
+    
+    <!-- Action Log -->
+    <div id="action-log" class="ui-panel">
+      <div class="panel-title">Action Log</div>
+      <div id="action-list"></div>
+    </div>
+    
+    <!-- Examine Panel -->
+    <div id="examine-panel" class="ui-panel">
+      <div class="panel-title">Examining...</div>
+      <div id="examine-content"></div>
+      <button id="close-examine">Close</button>
+    </div>
+    
+    <div class="clickable-hint" id="hover-hint">Click to examine</div>
+  </div>
+  
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
