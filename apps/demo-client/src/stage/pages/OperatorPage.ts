@@ -39,16 +39,19 @@ export class OperatorPage {
         <header class="operator-header">
           <h1>📱 Operator Controls</h1>
           <p class="session-badge">Session: <code>${this.sessionId}</code></p>
-          <p class="companion-note">Phone companion • Watch the main screen for the 3D stage</p>
+          <p class="companion-note">
+            <strong>📱 Phone companion</strong> • Point your phone at the main screen to see the 3D museum
+          </p>
         </header>
         
         <div class="join-form">
+          <div class="join-icon">👋</div>
           <h2>Join as Operator</h2>
           <p>You'll handle drawers, codes, and physical interactions</p>
           
           <div class="input-group">
             <label>Your Name</label>
-            <input type="text" id="operator-name" placeholder="Enter your name" />
+            <input type="text" id="operator-name" placeholder="Enter your name" autocomplete="name" />
           </div>
           
           <button id="join-operator-btn" class="primary-btn">Join Heist</button>
@@ -339,6 +342,12 @@ export class OperatorPage {
         padding: 2rem;
         background: #f7fafc;
         border-radius: 12px;
+        text-align: center;
+      }
+      
+      .join-icon {
+        font-size: 3rem;
+        margin-bottom: 1rem;
       }
       
       .join-form h2 {
