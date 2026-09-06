@@ -52,7 +52,7 @@ export class GameSession extends DurableObject<Env> {
       // Initialize default state if new session
       const existing = this.ctx.storage.sql.exec(
         "SELECT value FROM session_state WHERE key = 'current_room'"
-      ).one();
+      ).toArray()[0];
       
       if (!existing) {
         this.ctx.storage.sql.exec(
@@ -77,7 +77,7 @@ export class GameSession extends DurableObject<Env> {
     const existing = this.ctx.storage.sql.exec<{ name: string }>(
       "SELECT name FROM players WHERE player_id = ?",
       playerId
-    ).one();
+    ).toArray()[0];
     
     if (existing) {
       return {
@@ -385,14 +385,14 @@ export class GameSession extends DurableObject<Env> {
     const player = this.ctx.storage.sql.exec<{ name: string }>(
       "SELECT name FROM players WHERE player_id = ?",
       playerId
-    ).one();
+    ).toArray()[0];
     return player?.name || playerId;
   }
   
   private getCurrentRoom(): number {
     const result = this.ctx.storage.sql.exec<{ value: string }>(
       "SELECT value FROM session_state WHERE key = 'current_room'"
-    ).one();
+    ).toArray()[0];
     return parseInt(result!.value);
   }
   
@@ -406,7 +406,7 @@ export class GameSession extends DurableObject<Env> {
   private getUnlockedDoors(): string[] {
     const result = this.ctx.storage.sql.exec<{ value: string }>(
       "SELECT value FROM session_state WHERE key = 'unlocked_doors'"
-    ).one();
+    ).toArray()[0];
     return JSON.parse(result!.value);
   }
   
@@ -424,7 +424,7 @@ export class GameSession extends DurableObject<Env> {
   private addSolvedPuzzle(puzzleId: string): void {
     const result = this.ctx.storage.sql.exec<{ value: string }>(
       "SELECT value FROM session_state WHERE key = 'solved_puzzles'"
-    ).one();
+    ).toArray()[0];
     const puzzles = JSON.parse(result!.value);
     if (!puzzles.includes(puzzleId)) {
       puzzles.push(puzzleId);
@@ -438,7 +438,7 @@ export class GameSession extends DurableObject<Env> {
   private getHintsUsed(): Record<number, number> {
     const result = this.ctx.storage.sql.exec<{ value: string }>(
       "SELECT value FROM session_state WHERE key = 'hints_used'"
-    ).one();
+    ).toArray()[0];
     return JSON.parse(result!.value);
   }
   
@@ -455,7 +455,7 @@ export class GameSession extends DurableObject<Env> {
     const result = this.ctx.storage.sql.exec<{ item_name: string }>(
       "SELECT item_name FROM inventory WHERE item_name = ?",
       itemName
-    ).one();
+    ).toArray()[0];
     return !!result;
   }
   
