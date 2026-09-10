@@ -1,0 +1,521 @@
+/*
+ * Stage juice layer (Module C). Scoped under .hj-* so it can be dropped on top
+ * of any StagePage layout. Palette: light pearl surfaces, champagne gold for
+ * success, cyan for interaction, quiet slate for errors, dark ink text.
+ */
+
+.hj-root {
+  --hj-ink: #1d2430;
+  --hj-muted: #5b6472;
+  --hj-pearl: rgba(255, 252, 246, 0.82);
+  --hj-pearl-edge: rgba(255, 255, 255, 0.9);
+  --hj-gold: #c9a23a;
+  --hj-gold-deep: #9a7a1c;
+  --hj-gold-light: #f3d98a;
+  --hj-cyan: #1fb6c9;
+  --hj-cyan-deep: #0e8a99;
+  --hj-slate: #7b8492;
+  --hj-shadow: 0 10px 30px rgba(29, 36, 48, 0.18), 0 1px 0 rgba(255, 255, 255, 0.7) inset;
+  --hj-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --hj-ease-pop: cubic-bezier(0.34, 1.4, 0.64, 1);
+  position: relative;
+}
+
+/* ---------- Toasts (top edge, one at a time) ---------- */
+
+.hj-toasts {
+  position: absolute;
+  top: 0.9rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  pointer-events: none;
+  display: flex;
+  justify-content: center;
+  width: min(520px, 92%);
+}
+
+.hj-toast {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.7rem 1.1rem 0.7rem 0.9rem;
+  border-radius: 12px;
+  background: var(--hj-pearl);
+  backdrop-filter: blur(14px) saturate(1.2);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  border: 1px solid var(--hj-pearl-edge);
+  box-shadow: var(--hj-shadow);
+  color: var(--hj-ink);
+  max-width: 100%;
+  opacity: 0;
+  transform: translateY(-14px) scale(0.96);
+  transition:
+    opacity 260ms var(--hj-ease-out),
+    transform 320ms var(--hj-ease-pop);
+}
+
+.hj-toast.is-in {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.hj-toast.is-out {
+  opacity: 0;
+  transform: translateY(-10px) scale(0.98);
+}
+
+.hj-toast__icon {
+  flex: 0 0 auto;
+  width: 1.9rem;
+  height: 1.9rem;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #fff;
+  background: var(--hj-slate);
+}
+
+.hj-toast__text {
+  min-width: 0;
+}
+
+.hj-toast__title {
+  font-size: 0.95rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1.2;
+}
+
+.hj-toast__body {
+  font-size: 0.82rem;
+  color: var(--hj-muted);
+  margin-top: 0.15rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hj-toast__meta {
+  font-size: 0.72rem;
+  color: var(--hj-muted);
+  margin-top: 0.1rem;
+  letter-spacing: 0.02em;
+}
+
+/* Success: champagne gold */
+.hj-toast--success {
+  border-color: rgba(201, 162, 58, 0.55);
+  background: linear-gradient(135deg, rgba(255, 251, 240, 0.9), rgba(250, 240, 210, 0.86));
+}
+
+.hj-toast--success .hj-toast__icon {
+  background: linear-gradient(160deg, var(--hj-gold-light), var(--hj-gold) 55%, var(--hj-gold-deep));
+  box-shadow: 0 0 0 3px rgba(201, 162, 58, 0.18);
+}
+
+.hj-toast--success .hj-toast__title {
+  color: var(--hj-gold-deep);
+}
+
+/* Info: cyan interact */
+.hj-toast--info {
+  border-color: rgba(31, 182, 201, 0.45);
+}
+
+.hj-toast--info .hj-toast__icon {
+  background: linear-gradient(160deg, #7fe3ee, var(--hj-cyan) 60%, var(--hj-cyan-deep));
+}
+
+.hj-toast--info .hj-toast__title {
+  color: var(--hj-cyan-deep);
+}
+
+/* Error: quiet, never louder than success */
+.hj-toast--error {
+  border-color: rgba(123, 132, 146, 0.4);
+  background: rgba(246, 244, 241, 0.86);
+}
+
+.hj-toast--error .hj-toast__icon {
+  background: var(--hj-slate);
+}
+
+.hj-toast--error .hj-toast__title {
+  color: var(--hj-muted);
+}
+
+.hj-toast--error.is-in {
+  animation: hj-nudge 360ms var(--hj-ease-out) 1;
+}
+
+@keyframes hj-nudge {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  25% {
+    translate: -4px 0;
+  }
+  50% {
+    translate: 4px 0;
+  }
+  75% {
+    translate: -2px 0;
+  }
+}
+
+/* ---------- Sparkles (shared by toast + ribbon) ---------- */
+
+.hj-sparkles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.hj-sparkle {
+  position: absolute;
+  left: 1.6rem;
+  top: 50%;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fff7d6 0%, var(--hj-gold-light) 45%, var(--hj-gold) 100%);
+  box-shadow: 0 0 6px rgba(243, 217, 138, 0.9);
+  opacity: 0;
+  animation: hj-sparkle 900ms var(--hj-ease-out) var(--delay, 0ms) 1 both;
+}
+
+.hj-ribbon .hj-sparkle {
+  left: 50%;
+}
+
+@keyframes hj-sparkle {
+  0% {
+    opacity: 0;
+    transform: rotate(var(--angle)) translateX(0) scale(0.4);
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(var(--angle)) translateX(var(--dist)) scale(1);
+  }
+}
+
+/* ---------- Examine clue card (left edge) ---------- */
+
+.hj-examine {
+  position: absolute;
+  left: 1rem;
+  top: 4.6rem;
+  z-index: 20;
+  width: min(300px, 44%);
+  padding: 0.95rem 1.05rem 0.85rem;
+  border-radius: 14px;
+  background: var(--hj-pearl);
+  backdrop-filter: blur(16px) saturate(1.15);
+  -webkit-backdrop-filter: blur(16px) saturate(1.15);
+  border: 1px solid var(--hj-pearl-edge);
+  box-shadow: var(--hj-shadow);
+  color: var(--hj-ink);
+  pointer-events: none;
+  opacity: 0;
+  transform: translateX(-16px);
+  transition:
+    opacity 260ms var(--hj-ease-out),
+    transform 340ms var(--hj-ease-out);
+}
+
+.hj-examine::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  border-radius: 14px 0 0 14px;
+  background: linear-gradient(180deg, var(--hj-gold-light), var(--hj-gold), var(--hj-gold-deep));
+}
+
+.hj-examine.is-in {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.hj-examine.is-out {
+  opacity: 0;
+  transform: translateX(-10px);
+}
+
+.hj-examine__head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+
+.hj-examine__glyph {
+  width: 1.6rem;
+  height: 1.6rem;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 0.85rem;
+  background: linear-gradient(160deg, var(--hj-gold-light), var(--hj-gold) 55%, var(--hj-gold-deep));
+}
+
+.hj-examine__eyebrow {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--hj-gold-deep);
+}
+
+.hj-examine__subject {
+  font-size: 1rem;
+  font-weight: 700;
+  margin-bottom: 0.3rem;
+}
+
+.hj-examine__text {
+  font-size: 0.86rem;
+  line-height: 1.45;
+  color: var(--hj-ink);
+  margin: 0 0 0.7rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.hj-examine__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.6rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid rgba(201, 162, 58, 0.35);
+}
+
+.hj-examine__label {
+  font-size: 0.66rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--hj-muted);
+}
+
+.hj-examine__type {
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--hj-cyan-deep);
+}
+
+.hj-examine__by {
+  margin-left: auto;
+  font-size: 0.72rem;
+  color: var(--hj-muted);
+}
+
+/* ---------- Ticker emphasis (applied to existing .action-item rows) ---------- */
+
+.hj-ticker .action-item {
+  color: var(--hj-ink, #1d2430);
+  transition:
+    background 300ms ease,
+    border-color 300ms ease;
+}
+
+.hj-ticker .hj-ticker__newest {
+  background: linear-gradient(90deg, rgba(250, 240, 210, 0.95), rgba(255, 255, 255, 0.92));
+  border-left-color: var(--hj-gold, #c9a23a);
+  box-shadow: 0 2px 10px rgba(201, 162, 58, 0.16);
+}
+
+.hj-ticker .hj-ticker__newest .action-player {
+  color: var(--hj-gold-deep, #9a7a1c);
+}
+
+.hj-ticker .hj-ticker__newest .action-text {
+  color: var(--hj-ink, #1d2430);
+  font-weight: 600;
+}
+
+.hj-ticker .hj-ticker__newest--enter {
+  animation: hj-ticker-pulse 900ms var(--hj-ease-out, ease-out) 1;
+}
+
+@keyframes hj-ticker-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(201, 162, 58, 0.55);
+    transform: translateX(-6px);
+  }
+  60% {
+    box-shadow: 0 0 0 6px rgba(201, 162, 58, 0);
+  }
+  100% {
+    transform: translateX(0);
+    box-shadow: 0 2px 10px rgba(201, 162, 58, 0.16);
+  }
+}
+
+/* ---------- Climax ribbon (bottom edge, never covers the centre) ---------- */
+
+.hj-ribbon {
+  position: absolute;
+  left: 50%;
+  bottom: 1.25rem;
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.65rem 1.4rem;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(255, 252, 244, 0.94), rgba(250, 242, 218, 0.9));
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(201, 162, 58, 0.6);
+  box-shadow:
+    0 12px 36px rgba(154, 122, 28, 0.22),
+    0 0 0 1px rgba(255, 255, 255, 0.6) inset;
+  color: var(--hj-ink);
+  pointer-events: none;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translate(-50%, 18px) scale(0.94);
+  transition:
+    opacity 320ms var(--hj-ease-out),
+    transform 420ms var(--hj-ease-pop);
+}
+
+.hj-ribbon.is-in {
+  opacity: 1;
+  transform: translate(-50%, 0) scale(1);
+}
+
+.hj-ribbon.is-out {
+  opacity: 0;
+  transform: translate(-50%, 10px) scale(0.97);
+}
+
+.hj-ribbon__rule {
+  width: 2.2rem;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--hj-gold), transparent);
+}
+
+.hj-ribbon__text {
+  text-align: center;
+}
+
+.hj-ribbon__eyebrow {
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--hj-gold-deep);
+}
+
+.hj-ribbon__title {
+  font-size: 1.35rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  line-height: 1.1;
+  background: linear-gradient(90deg, var(--hj-gold-deep), var(--hj-gold) 40%, var(--hj-gold-light) 50%, var(--hj-gold) 60%, var(--hj-gold-deep));
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+.hj-ribbon--heist-complete .hj-ribbon__title {
+  animation: hj-sheen 2.6s linear infinite;
+}
+
+.hj-ribbon__body {
+  font-size: 0.74rem;
+  color: var(--hj-muted);
+  margin-top: 0.15rem;
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@keyframes hj-sheen {
+  from {
+    background-position: 120% 0;
+  }
+  to {
+    background-position: -120% 0;
+  }
+}
+
+/* One-shot champagne wash on heist complete */
+.hj-flash {
+  position: absolute;
+  inset: 0;
+  z-index: 24;
+  pointer-events: none;
+  background: radial-gradient(circle at 50% 55%, rgba(255, 244, 205, 0.55), rgba(255, 244, 205, 0) 70%);
+  opacity: 0;
+  transition: opacity 180ms ease-out;
+}
+
+.hj-flash.is-in {
+  animation: hj-flash 900ms ease-out 1 forwards;
+}
+
+@keyframes hj-flash {
+  0% {
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* ---------- Reduced motion: keep the message, drop the theatrics ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .hj-root * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.hj-reduced-motion .hj-toast,
+.hj-reduced-motion .hj-examine,
+.hj-reduced-motion .hj-ribbon {
+  transition: none;
+  transform: none;
+}
+
+.hj-reduced-motion .hj-ribbon {
+  transform: translateX(-50%);
+}
+
+.hj-reduced-motion .hj-sparkles,
+.hj-reduced-motion .hj-flash {
+  display: none;
+}
+
+.hj-reduced-motion .hj-ribbon__title,
+.hj-reduced-motion .hj-toast--error.is-in,
+.hj-reduced-motion .hj-ticker__newest--enter {
+  animation: none;
+}

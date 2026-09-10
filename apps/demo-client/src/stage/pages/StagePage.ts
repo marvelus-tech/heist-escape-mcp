@@ -12,17 +12,7 @@
 import * as THREE from 'three';
 import { SceneManager } from '../../scene-manager';
 import { GameFeel, JuiceTier } from '../../game-feel';
-
-interface InventoryItem {
-  item: string;
-  takenBy: string;
-}
-
-interface ActionLogEntry {
-  player: string;
-  result: string;
-  timestamp: string;
-}
+import { StageJuice, type JuiceEvent, type ActionLogEntry, type InventoryItem } from '../juice';
 
 export class StagePage {
   private apiBase: string;
@@ -35,12 +25,12 @@ export class StagePage {
   private renderer: THREE.WebGLRenderer | null = null;
   private sceneManager: SceneManager | null = null;
   private gameFeel: GameFeel | null = null;
+  private juice: StageJuice | null = null;
   private animationFrameId: number | null = null;
   private lastFrameTime = 0;
   
   // Polling
   private pollingInterval: number | null = null;
-  private lastInventoryCount = 0;
   
   constructor(apiBase: string, mcpUrl: string) {
     this.apiBase = apiBase;
@@ -247,6 +237,10 @@ export class StagePage {
     // GameFeel system
     this.gameFeel = new GameFeel(this.camera, this.scene);
     
+    // Juice layer (toasts, examine card, ticker emphasis, climax ribbon)
+    this.juice = StageJuice.mount(container, { onEvent: (e) => this.onJuiceEvent(e) });
+    this.juice.attachTicker(document.getElementById('action-list'));
+    
     // Build initial room (lobby)
     this.buildDemoRoom();
     
@@ -357,9 +351,32 @@ export class StagePage {
     if (this.gameFeel) {
       this.gameFeel.dispose();
     }
+    this.juice?.destroy();
+    this.juice = null;
     
     this.sessionId = null;
     this.render();
+  }
+  
+  /** Map juice events to GameFeel (camera shake, particles, stingers). */
+  private onJuiceEvent(event: JuiceEvent) {
+    if (!this.gameFeel) return;
+    switch (event.kind) {
+      case 'item-acquired':
+        this.gameFeel.juice('MEDIUM', new THREE.Vector3(0, 1.5, 2), 'pickup');
+        break;
+      case 'door-unlocked':
+      case 'code-accepted':
+        this.gameFeel.juice('LARGE', new THREE.Vector3(0, 2, 0), 'unlock');
+        break;
+      case 'vault-open':
+      case 'heist-complete':
+        this.gameFeel.juice('LARGE', new THREE.Vector3(0, 1.5, -2), 'success');
+        break;
+      case 'code-rejected':
+        this.gameFeel.juice('SMALL', undefined, 'click');
+        break;
+    }
   }
   
   private generateQRCodes() {
@@ -388,6 +405,7 @@ export class StagePage {
       try {
         await this.pollActions();
         await this.pollInventory();
+        await this.pollState();
       } catch (error) {
         console.error('Polling error:', error);
       }
@@ -405,39 +423,29 @@ export class StagePage {
     const actionList = document.getElementById('action-list');
     if (!actionList || !data.actions) return;
     
+    // Juice diffs against what it has already seen, so this is safe every poll
+    this.juice?.onActions(data.actions);
+    
     if (data.actions.length === 0) {
       actionList.innerHTML = '<div class="empty-state">Waiting for actions...</div>';
     } else {
-      actionList.innerHTML = data.actions.slice(-8).reverse().map((action: ActionLogEntry) => {
-        // Detect special events and trigger juice
-        const result = action.result.toLowerCase();
-        
-        // Door unlock / room transition
-        if (result.includes('unlocked') || result.includes('door opens')) {
-          setTimeout(() => {
-            if (this.gameFeel) {
-              this.gameFeel.juice('LARGE', new THREE.Vector3(0, 2, 0), 'unlock');
-            }
-          }, 50);
-        }
-        
-        // Successful code entry
-        if (result.includes('correct') || result.includes('vault') || result.includes('success')) {
-          setTimeout(() => {
-            if (this.gameFeel) {
-              this.gameFeel.juice('LARGE', new THREE.Vector3(0, 1.5, -2), 'success');
-            }
-          }, 50);
-        }
-        
-        return `
+      actionList.innerHTML = data.actions.slice(-8).reverse().map((action: ActionLogEntry) => `
           <div class="action-item">
             <span class="action-player">${action.player}</span>
             <span class="action-text">${action.result}</span>
           </div>
-        `;
-      }).join('');
+        `).join('');
     }
+  }
+  
+  private async pollState() {
+    const res = await fetch(`${this.apiBase}/api/get_state`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId: this.sessionId })
+    });
+    const state = await res.json();
+    if (state && !state.error) this.juice?.onState(state);
   }
   
   private async pollInventory() {
@@ -451,15 +459,7 @@ export class StagePage {
     const inventoryList = document.getElementById('inventory-list');
     if (!inventoryList || !data.items) return;
     
-    // Detect new items
-    if (data.items.length > this.lastInventoryCount) {
-      // New item picked up! Trigger juice
-      if (this.gameFeel) {
-        this.gameFeel.juice('MEDIUM', new THREE.Vector3(0, 1.5, 2), 'pickup');
-      }
-      this.showInventoryToast(data.items[data.items.length - 1]);
-    }
-    this.lastInventoryCount = data.items.length;
+    this.juice?.onInventory(data.items);
     
     if (data.items.length === 0) {
       inventoryList.innerHTML = '<div class="empty-state">No items collected yet</div>';
@@ -472,30 +472,6 @@ export class StagePage {
         </div>`
       ).join('');
     }
-  }
-  
-  private showInventoryToast(item: InventoryItem) {
-    const toast = document.createElement('div');
-    toast.className = 'inventory-toast';
-    toast.innerHTML = `
-      <div class="toast-icon">✨</div>
-      <div class="toast-content">
-        <div class="toast-title">Item Added!</div>
-        <div class="toast-item">${item.item}</div>
-        <div class="toast-by">by ${item.takenBy}</div>
-      </div>
-    `;
-    
-    document.body.appendChild(toast);
-    
-    // Animate in
-    setTimeout(() => toast.classList.add('show'), 10);
-    
-    // Animate out
-    setTimeout(() => {
-      toast.classList.remove('show');
-      setTimeout(() => toast.remove(), 300);
-    }, 3000);
   }
   
   private applyStyles() {
@@ -934,58 +910,6 @@ export class StagePage {
         font-size: 0.875rem;
       }
       
-      /* Inventory Toast */
-      .inventory-toast {
-        position: fixed;
-        top: 2rem;
-        right: 2rem;
-        background: white;
-        border-radius: 12px;
-        padding: 1.25rem;
-        box-shadow: 0 12px 48px rgba(0, 0, 0, 0.2);
-        display: flex;
-        align-items: center;
-        gap: 1rem;
-        min-width: 300px;
-        z-index: 1000;
-        border-left: 4px solid #48bb78;
-        opacity: 0;
-        transform: translateX(400px);
-        transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
-      }
-      
-      .inventory-toast.show {
-        opacity: 1;
-        transform: translateX(0);
-      }
-      
-      .toast-icon {
-        font-size: 2rem;
-      }
-      
-      .toast-content {
-        flex: 1;
-      }
-      
-      .toast-title {
-        font-weight: 700;
-        color: #2d3748;
-        margin-bottom: 0.25rem;
-        font-size: 1rem;
-      }
-      
-      .toast-item {
-        color: #48bb78;
-        font-weight: 600;
-        font-size: 0.938rem;
-      }
-      
-      .toast-by {
-        font-size: 0.75rem;
-        color: #718096;
-        margin-top: 0.125rem;
-      }
-      
       /* Responsive */
       @media (max-width: 1024px) {
         .main-content {
@@ -1014,6 +938,8 @@ export class StagePage {
     if (this.gameFeel) {
       this.gameFeel.dispose();
     }
+    this.juice?.destroy();
+    this.juice = null;
     if (this.renderer) {
       this.renderer.dispose();
     }
