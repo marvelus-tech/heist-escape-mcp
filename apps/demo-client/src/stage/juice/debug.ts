@@ -1,7 +1,7 @@
 /**
  * Console helpers for demoing the juice layer without a live Operator.
  *
- *   HeistJuice.demo()                       // scripted 6-beat sequence
+ *   HeistJuice.demo()                       // scripted 9-beat sequence, ends on an authenticated win
  *   HeistJuice.toast('success', 'Key acquired', 'by Raven')
  *   HeistJuice.examine('flower-arrangement', 'Something glints between the stems')
  *   HeistJuice.action({ player: 'Raven', action: 'take', target: 'gallery-a-key', result: 'Raven took the brass gallery key' })
@@ -73,15 +73,36 @@ export function installJuiceDebug(juice: StageJuice): () => void {
       api.action({
         player: 'Raven',
         action: 'enter_code',
+        target: 'card-catalog-7734',
+        result: 'Unlocked catalog drawer 7734'
+      });
+      await wait(4000);
+      api.action({
+        player: 'Raven',
+        action: 'enter_code',
         target: 'vault-keypad',
         result: 'Raven entered correct vault code'
       });
       await wait(4200);
       api.action({
         player: 'Examiner',
+        action: 'examine',
+        target: 'display-diamond',
+        result: 'Examined display-diamond: the facets are glass. A replica.'
+      });
+      await wait(3400);
+      api.action({
+        player: 'Examiner',
         action: 'take',
         target: 'sunburst-diamond',
         result: 'Examiner took sunburst-diamond'
+      });
+      await wait(4000);
+      api.action({
+        player: 'Examiner',
+        action: 'authenticate',
+        target: 'sunburst-diamond',
+        result: 'Authentic Sunburst Diamond confirmed. Heist complete.'
       });
     }
   };

@@ -7,7 +7,33 @@
  * generic heist language: "vault", "diamond", "unlocked", "incorrect".
  */
 
-import type { ActionLogEntry, JuiceEvent, StageStateLike } from './types';
+import type { ActionLogEntry, FinaleFlags, JuiceEvent, StageStateLike } from './types';
+
+/**
+ * Story vocabulary the finale logic keys off. Kept in one place so it is easy
+ * to extend when Logic adds flags; these are detection tokens, not answers
+ * shown to players.
+ */
+export const STORY = {
+  /** Catalog card / Elena's note surfacing in the log. */
+  reveal: /\b7734\b|\belena\b|catalog card|\breveal(ed|s)?\b/i,
+  /** Fake prize signals. */
+  replica: /\breplica\b|\bfake\b|\bcounterfeit\b|\bforg(ed|ery)\b|not authentic|inauthentic|\bdecoy\b/i,
+  /** Verified prize signals ("authentic" alone, never "not authentic"). */
+  authentic: /\bauthentic(ated|ity)?\b/i,
+  /** Explicit finale wording Logic may log. */
+  complete: /heist\s*complete/i
+} as const;
+
+export type StoryBeat = 'replica' | 'authentic' | 'reveal' | null;
+
+/** Which story beat (if any) a row's target + result mention. Replica wins over authentic. */
+export function detectStory(text: string): StoryBeat {
+  if (STORY.replica.test(text)) return 'replica';
+  if (STORY.authentic.test(text)) return 'authentic';
+  if (STORY.reveal.test(text)) return 'reveal';
+  return null;
+}
 
 /** Stable identity for dedupe across polls (the API has no row id). */
 export function actionKey(a: ActionLogEntry): string {
@@ -37,6 +63,39 @@ export function classifyAction(a: ActionLogEntry): JuiceEvent | null {
   const action = (a.action ?? inferAction(lower)).toLowerCase();
   const target = a.target ?? '';
   const player = a.player;
+  const story = detectStory(`${target} ${result}`);
+
+  // Rejected codes stay rejected even if the target mentions the catalog.
+  const rejected =
+    action === 'enter_code' &&
+    /incorrect|denied|wrong|invalid|\blocked\b/.test(lower) &&
+    !/unlocked|\bcorrect\b/.test(lower);
+  if (rejected) {
+    return { kind: 'code-rejected', tone: 'error', title: 'Code rejected', body: result, player, subject: target };
+  }
+
+  // Story beats that cut across action types.
+  if (story === 'reveal' && action !== 'joined_session') {
+    return {
+      kind: 'reveal',
+      tone: 'info',
+      title: /elena/i.test(`${target} ${result}`) ? "Elena's note revealed" : 'Catalog card revealed',
+      body: result,
+      player,
+      subject: target
+    };
+  }
+  if (story === 'replica' && action !== 'joined_session' && action !== 'look_around') {
+    const subject = target || (action === 'take' ? takeSubject(result) : result.replace(/^examined\s+/i, ''));
+    return {
+      kind: 'replica-warning',
+      tone: 'warning',
+      title: action === 'take' ? 'Replica taken' : 'Replica detected',
+      body: result,
+      player,
+      subject
+    };
+  }
 
   switch (action) {
     case 'examine': {
@@ -53,16 +112,9 @@ export function classifyAction(a: ActionLogEntry): JuiceEvent | null {
     }
 
     case 'take': {
-      const subject = target || result.replace(/^.*\btook\b\s*(the\s+)?/i, '');
+      const subject = target || takeSubject(result);
       if (isDiamond(subject) || isDiamond(lower)) {
-        return {
-          kind: 'heist-complete',
-          tone: 'success',
-          title: `${humanize(subject) || 'Diamond'} secured`,
-          body: result,
-          player,
-          subject
-        };
+        return prizeEvent(subject, result, player, story === 'authentic');
       }
       return {
         kind: 'item-acquired',
@@ -90,10 +142,6 @@ export function classifyAction(a: ActionLogEntry): JuiceEvent | null {
     }
 
     case 'enter_code': {
-      // "Unlocked ..." must not trip the failure branch, hence the word boundary.
-      if (/incorrect|denied|wrong|invalid|\blocked\b/.test(lower) && !/unlocked|\bcorrect\b/.test(lower)) {
-        return { kind: 'code-rejected', tone: 'error', title: 'Code rejected', body: result, player, subject: target };
-      }
       if (isVault(lower) || isVault(target)) {
         return { kind: 'vault-open', tone: 'success', title: 'Vault open', body: result, player, subject: target };
       }
@@ -126,9 +174,41 @@ export function classifyAction(a: ActionLogEntry): JuiceEvent | null {
       return { kind: 'player-joined', tone: 'info', title: `${player} joined`, body: result, player };
     }
 
-    default:
+    default: {
+      // Unknown action names Logic may add later (claim, authenticate, finale...).
+      // Only react when the row clearly talks about the prize.
+      if (STORY.complete.test(result) || isDiamond(`${target} ${result}`)) {
+        const subject = isDiamond(target) ? target : 'diamond';
+        return prizeEvent(subject, result, player, story === 'authentic' || STORY.complete.test(result));
+      }
       return null;
+    }
   }
+}
+
+/** "Raven took the brass gallery key" -> "brass gallery key" */
+function takeSubject(result: string): string {
+  return result.replace(/^.*\btook\b\s*(the\s+)?/i, '');
+}
+
+/**
+ * Prize handling: the full finale only fires when the row is authenticated.
+ * An unverified pedestal take gets a questioning toast and no ribbon.
+ */
+function prizeEvent(subject: string, result: string, player: string, authentic: boolean): JuiceEvent {
+  const name = prizeName(subject);
+  if (authentic) {
+    return { kind: 'heist-complete', tone: 'success', title: `${name} secured`, body: result, player, subject };
+  }
+  return { kind: 'prize-taken', tone: 'success', title: `${name} secured?`, body: result, player, subject };
+}
+
+/** "authentic-sunburst-diamond" -> "Sunburst"; bare "diamond" -> "Diamond". */
+export function prizeName(subject?: string): string {
+  if (!subject) return 'Diamond';
+  const words = humanize(subject).split(' ').filter(Boolean);
+  const specific = words.filter((w) => !/^(diamond|authentic|the|replica|fake)$/i.test(w));
+  return (specific.length ? specific : words).join(' ') || 'Diamond';
 }
 
 /** Best-effort action name for rows that lack the `action` column. */
@@ -158,16 +238,59 @@ export function diffActions(seen: Set<string>, actions: ActionLogEntry[]): Actio
 export type ClimaxStage = 'none' | 'vault-open' | 'heist-complete';
 
 /**
+ * Read finale flags from whatever shape Logic ends up exposing. Every lookup
+ * is optional; unknown shapes simply yield `{}`.
+ */
+export function readFinaleFlags(state: StageStateLike): FinaleFlags {
+  const s = state as Record<string, unknown>;
+  const nested = [state.finale, state.flags].filter(Boolean) as Record<string, unknown>[];
+  const pick = (key: string): unknown => s[key] ?? nested.map((n) => n[key]).find((v) => v !== undefined);
+
+  const flags: FinaleFlags = {};
+
+  const complete = pick('heistComplete') ?? pick('heist_complete') ?? pick('complete');
+  if (typeof complete === 'boolean') flags.heistComplete = complete;
+
+  const authentic = pick('authentic') ?? pick('diamondAuthentic') ?? pick('isAuthentic');
+  if (typeof authentic === 'boolean') flags.authentic = authentic;
+
+  const outcome = pick('outcome') ?? pick('ending') ?? pick('result');
+  if (typeof outcome === 'string') {
+    const beat = detectStory(outcome);
+    if (beat === 'authentic') flags.authentic = true;
+    if (beat === 'replica') flags.authentic = false;
+    if (STORY.complete.test(outcome)) flags.heistComplete = true;
+  }
+
+  // Solved-puzzle names are the most likely first place a finale flag lands.
+  const puzzles = state.solvedPuzzles ?? [];
+  if (puzzles.some((p) => STORY.authentic.test(p) && !STORY.replica.test(p))) flags.authentic = true;
+  if (puzzles.some((p) => STORY.complete.test(p))) flags.heistComplete = true;
+
+  return flags;
+}
+
+/**
  * Derive the climax stage from session state alone. Used so a page reload
  * mid-heist still shows the ribbon without replaying toasts.
+ *
+ * The full finale requires an authenticity signal: either explicit flags, or
+ * an inventory prize whose name says "authentic". A bare diamond in inventory
+ * is only a pedestal take and stays at vault-open.
  */
 export function detectClimax(state: StageStateLike): { stage: ClimaxStage; subject?: string } {
+  const flags = readFinaleFlags(state);
   const prize = state.inventory?.find((i) => isDiamond(i.item));
-  if (prize) return { stage: 'heist-complete', subject: prize.item };
+  const prizeAuthentic = !!prize && detectStory(prize.item) === 'authentic';
+
+  const authenticWin = flags.authentic === true && (flags.heistComplete !== false || !!prize);
+  if (authenticWin || prizeAuthentic) {
+    return { stage: 'heist-complete', subject: prize?.item ?? 'diamond' };
+  }
 
   const vaultDoor = state.unlockedDoors?.find((d) => isVault(d));
   const vaultPuzzle = state.solvedPuzzles?.find((p) => isVault(p));
-  if (vaultDoor || vaultPuzzle) return { stage: 'vault-open', subject: vaultDoor ?? vaultPuzzle };
+  if (vaultDoor || vaultPuzzle || prize) return { stage: 'vault-open', subject: vaultDoor ?? vaultPuzzle ?? prize?.item };
 
   return { stage: 'none' };
 }

@@ -16,7 +16,7 @@ import './juice.css';
 import { ClimaxRibbon } from './climax';
 import { prefersReducedMotion } from './dom';
 import { installJuiceDebug } from './debug';
-import { actionKey, classifyAction, detectClimax, diffActions, humanize } from './events';
+import { actionKey, classifyAction, detectClimax, detectStory, diffActions, humanize, prizeName } from './events';
 import { ExamineCard } from './examine-card';
 import { TickerEmphasis } from './ticker';
 import { ToastLayer } from './toasts';
@@ -96,10 +96,22 @@ export class StageJuice {
     // without a matching log line (e.g. host polls inventory faster than actions).
     fresh.forEach((i) => {
       if (this.seenActions.size && this.recentlyToastedItem(i.item)) return;
+      if (/diamond/i.test(i.item)) {
+        // Inventory alone cannot prove authenticity unless the item name says so.
+        const authentic = detectStory(i.item) === 'authentic';
+        this.emit({
+          kind: authentic ? 'heist-complete' : 'prize-taken',
+          tone: 'success',
+          title: `${prizeName(i.item)} secured${authentic ? '' : '?'}`,
+          player: i.takenBy,
+          subject: i.item
+        });
+        return;
+      }
       this.emit({
-        kind: /diamond/i.test(i.item) ? 'heist-complete' : 'item-acquired',
+        kind: 'item-acquired',
         tone: 'success',
-        title: `${humanize(i.item)} ${/diamond/i.test(i.item) ? 'secured' : 'acquired'}`,
+        title: `${humanize(i.item)} acquired`,
         player: i.takenBy,
         subject: i.item
       });
@@ -167,7 +179,7 @@ export class StageJuice {
   private handleAction(action: ActionLogEntry): void {
     const event = classifyAction(action);
     if (!event) return;
-    if (event.kind === 'item-acquired' || event.kind === 'heist-complete') {
+    if (event.kind === 'item-acquired' || event.kind === 'prize-taken' || event.kind === 'heist-complete') {
       this.lastItemToast = { item: event.subject ?? '', at: Date.now() };
       if (event.subject) this.seenItems.add(event.subject);
     }
@@ -197,6 +209,19 @@ export class StageJuice {
         this.climax.show({ stage: 'vault-open', subject: event.subject, body: event.body });
         break;
 
+      case 'reveal':
+        this.toasts.show({ tone: 'info', variant: 'reveal', title: event.title, body: event.body, meta: byLine(event), durationMs: 3400 });
+        break;
+
+      case 'prize-taken':
+        // Questioning beat: gold, but no sparkle burst and no ribbon until authenticated.
+        this.toasts.show({ tone: 'success', variant: 'pending', sparkle: false, title: event.title, body: event.body, meta: byLine(event), durationMs: 3200 });
+        break;
+
+      case 'replica-warning':
+        this.toasts.show({ tone: 'warning', title: event.title, body: event.body, meta: byLine(event) });
+        break;
+
       default:
         this.toasts.show({ tone: event.tone, title: event.title, body: event.body, meta: byLine(event) });
     }
@@ -217,7 +242,7 @@ export class StageJuice {
       this.opts.onEvent?.({
         kind: 'heist-complete',
         tone: 'success',
-        title: `${humanize(found.subject)} secured`,
+        title: `${prizeName(found.subject)} secured`,
         subject: found.subject
       });
     }

@@ -20,16 +20,33 @@ export interface InventoryItem {
   takenBy: string;
 }
 
-/** Subset of `/api/get_state` the juice layer cares about. */
+/**
+ * Subset of `/api/get_state` the juice layer cares about. The finale fields are
+ * not shipped by the Worker yet; they are read defensively (see
+ * `readFinaleFlags` in events.ts) so the ribbon lights up as soon as Logic
+ * exposes them under any of the anticipated names.
+ */
 export interface StageStateLike {
   currentRoom?: number;
   unlockedDoors?: string[];
   solvedPuzzles?: string[];
   inventory?: InventoryItem[];
   recentActions?: ActionLogEntry[];
+  heistComplete?: boolean;
+  authentic?: boolean;
+  diamondAuthentic?: boolean;
+  outcome?: string;
+  finale?: { heistComplete?: boolean; authentic?: boolean; outcome?: string };
+  flags?: Record<string, unknown>;
 }
 
-export type JuiceTone = 'success' | 'error' | 'info';
+/** Normalized finale signals pulled out of state, all optional. */
+export interface FinaleFlags {
+  heistComplete?: boolean;
+  authentic?: boolean;
+}
+
+export type JuiceTone = 'success' | 'error' | 'info' | 'warning';
 
 export type JuiceEventKind =
   | 'examine'
@@ -41,6 +58,13 @@ export type JuiceEventKind =
   | 'room-changed'
   | 'player-joined'
   | 'vault-open'
+  /** Catalog card / Elena note surfaced: distinct cyan story beat. */
+  | 'reveal'
+  /** Something claiming to be the prize was taken but not yet authenticated. */
+  | 'prize-taken'
+  /** A replica / fake was examined or taken: subtle warning. */
+  | 'replica-warning'
+  /** Authenticated win only. Drives the full ribbon. */
   | 'heist-complete';
 
 /**

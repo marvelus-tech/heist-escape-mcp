@@ -363,7 +363,11 @@ export class StagePage {
     if (!this.gameFeel) return;
     switch (event.kind) {
       case 'item-acquired':
+      case 'prize-taken':
         this.gameFeel.juice('MEDIUM', new THREE.Vector3(0, 1.5, 2), 'pickup');
+        break;
+      case 'reveal':
+        this.gameFeel.juice('SMALL', new THREE.Vector3(0, 1.5, 0), 'click');
         break;
       case 'door-unlocked':
       case 'code-accepted':

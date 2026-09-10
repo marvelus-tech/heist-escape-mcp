@@ -4,13 +4,14 @@
  * Two stages, monotonic (never downgrades):
  *   vault-open      -> "VAULT OPEN" ribbon, auto-hides
  *   heist-complete  -> "HEIST COMPLETE / <PRIZE> SECURED", persistent, one gold flash
+ *                      (authenticated win only; an unverified pedestal take is a toast)
  *
  * Never covers the centre of the scene; the diamond stays the hero.
  */
 
 import { el, fadeOut } from './dom';
 import { buildSparkles } from './toasts';
-import { humanize, type ClimaxStage, isHigherClimax } from './events';
+import { type ClimaxStage, isHigherClimax, prizeName } from './events';
 
 export interface ClimaxRequest {
   stage: Exclude<ClimaxStage, 'none'>;
@@ -99,12 +100,4 @@ export class ClimaxRibbon {
   destroy(): void {
     this.reset();
   }
-}
-
-/** "sunburst-diamond" -> "Sunburst"; anything else -> humanized name or "Diamond". */
-function prizeName(subject?: string): string {
-  if (!subject) return 'Diamond';
-  const words = humanize(subject).split(' ').filter(Boolean);
-  const nonGeneric = words.filter((w) => !/^diamond$/i.test(w));
-  return (nonGeneric.length ? nonGeneric : words).join(' ') || 'Diamond';
 }

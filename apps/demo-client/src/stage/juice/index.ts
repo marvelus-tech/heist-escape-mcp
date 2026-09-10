@@ -1,7 +1,8 @@
 export { StageJuice } from './StageJuice';
-export { classifyAction, detectClimax, diffActions, humanize } from './events';
+export { STORY, classifyAction, detectClimax, detectStory, diffActions, humanize, prizeName, readFinaleFlags } from './events';
 export type {
   ActionLogEntry,
+  FinaleFlags,
   InventoryItem,
   JuiceEvent,
   JuiceEventKind,

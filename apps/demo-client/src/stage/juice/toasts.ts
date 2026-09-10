@@ -17,18 +17,29 @@ export interface ToastRequest {
   meta?: string;
   /** Visible time in ms (defaults per tone). */
   durationMs?: number;
+  /** Extra modifier class, e.g. 'reveal' -> .hj-toast--reveal. */
+  variant?: 'reveal' | 'pending';
+  /** Gold particle burst; defaults to true for success toasts. */
+  sparkle?: boolean;
 }
 
 const DEFAULT_DURATION: Record<JuiceTone, number> = {
   success: 2800,
   info: 2200,
-  error: 2000
+  error: 2000,
+  warning: 2600
 };
 
 const ICON: Record<JuiceTone, string> = {
   success: '\u2666', // diamond suit
   info: '\u25C9', // fisheye
-  error: '\u2715' // multiplication x
+  error: '\u2715', // multiplication x
+  warning: '!'
+};
+
+const VARIANT_ICON: Record<NonNullable<ToastRequest['variant']>, string> = {
+  reveal: '\u2726', // black four-pointed star
+  pending: '?'
 };
 
 const OUT_MS = 260;
@@ -79,9 +90,9 @@ export class ToastLayer {
       return;
     }
 
-    const toast = el('div', `hj-toast hj-toast--${req.tone}`);
+    const toast = el('div', `hj-toast hj-toast--${req.tone}${req.variant ? ` hj-toast--${req.variant}` : ''}`);
     toast.setAttribute('role', 'status');
-    toast.appendChild(el('span', 'hj-toast__icon', ICON[req.tone]));
+    toast.appendChild(el('span', 'hj-toast__icon', req.variant ? VARIANT_ICON[req.variant] : ICON[req.tone]));
 
     const text = el('div', 'hj-toast__text');
     text.appendChild(el('div', 'hj-toast__title', req.title));
@@ -89,7 +100,8 @@ export class ToastLayer {
     if (req.meta) text.appendChild(el('div', 'hj-toast__meta', req.meta));
     toast.appendChild(text);
 
-    if (req.tone === 'success' && !this.reducedMotion) {
+    const sparkle = req.sparkle ?? req.tone === 'success';
+    if (sparkle && !this.reducedMotion) {
       toast.appendChild(buildSparkles(8));
     }
 
