@@ -12,6 +12,9 @@ import type { Env } from "./types";
  * - Server is created fresh per request (no shared state leakage)
  * - Game state lives in GameSession DO (persistent, consistent)
  * - Tools are registered with Zod schemas for validation
+ * 
+ * NOTE: SDK v2 (`@modelcontextprotocol/server`) removed `server.tool()`.
+ * Tools must be registered with `server.registerTool(name, config, handler)`.
  */
 export function createHeistMcpServer(env: Env): McpServer {
   const server = new McpServer({
@@ -19,111 +22,95 @@ export function createHeistMcpServer(env: Env): McpServer {
     version: "1.0.0",
   });
 
+  const getSession = (sessionId: string) => {
+    const id = env.GAME_SESSION.idFromName(sessionId);
+    return env.GAME_SESSION.get(id);
+  };
+
+  const textResult = (text: string) => ({
+    content: [{ type: "text" as const, text }]
+  });
+
   // ===== Session Management Tools =====
   
-  server.tool(
+  server.registerTool(
     "join_session",
-    z.object({
-      sessionId: z.string().describe("Session ID to join (e.g., 'heist-alpha')"),
-      playerName: z.string().describe("Your player name"),
-      role: z.string().optional().describe("Optional role: 'examiner' or 'operator'")
-    }),
+    {
+      description: "Join (or rejoin) a heist session. Call this first.",
+      inputSchema: z.object({
+        sessionId: z.string().describe("Session ID to join (e.g., 'heist-alpha')"),
+        playerName: z.string().describe("Your player name"),
+        role: z.string().optional().describe("Optional role: 'examiner' or 'operator'")
+      })
+    },
     async ({ sessionId, playerName, role }) => {
-      const id = env.GAME_SESSION.idFromName(sessionId);
-      const stub = env.GAME_SESSION.get(id);
-      const result = await stub.joinSession(playerName, playerName, role);
-      
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result, null, 2)
-          }
-        ]
-      };
+      const result = await getSession(sessionId).joinSession(playerName, playerName, role);
+      return textResult(JSON.stringify(result, null, 2));
     }
   );
   
-  server.tool(
+  server.registerTool(
     "get_state",
-    z.object({
-      sessionId: z.string().describe("Session ID")
-    }),
+    {
+      description: "Get the full shared session state (room, unlocked doors, inventory, players, recent actions).",
+      inputSchema: z.object({
+        sessionId: z.string().describe("Session ID")
+      })
+    },
     async ({ sessionId }) => {
-      const id = env.GAME_SESSION.idFromName(sessionId);
-      const stub = env.GAME_SESSION.get(id);
-      const state = await stub.getState();
-      
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(state, null, 2)
-          }
-        ]
-      };
+      const state = await getSession(sessionId).getState();
+      return textResult(JSON.stringify(state, null, 2));
     }
   );
   
-  server.tool(
+  server.registerTool(
     "get_recent_actions",
-    z.object({
-      sessionId: z.string().describe("Session ID"),
-      limit: z.number().optional().describe("Number of recent actions (default 10)")
-    }),
+    {
+      description: "See what teammates (e.g. the Operator) have done recently.",
+      inputSchema: z.object({
+        sessionId: z.string().describe("Session ID"),
+        limit: z.number().optional().describe("Number of recent actions (default 10)")
+      })
+    },
     async ({ sessionId, limit }) => {
-      const id = env.GAME_SESSION.idFromName(sessionId);
-      const stub = env.GAME_SESSION.get(id);
-      const actions = await stub.getRecentActions(limit || 10);
-      
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({ actions }, null, 2)
-          }
-        ]
-      };
+      const actions = await getSession(sessionId).getRecentActions(limit || 10);
+      return textResult(JSON.stringify({ actions }, null, 2));
     }
   );
   
   // ===== Exploration Tools =====
   
-  server.tool(
+  server.registerTool(
     "look_around",
-    z.object({
-      sessionId: z.string().describe("Session ID"),
-      playerId: z.string().describe("Your player ID/name")
-    }),
+    {
+      description: "Survey the current room: description, visible objects and exits.",
+      inputSchema: z.object({
+        sessionId: z.string().describe("Session ID"),
+        playerId: z.string().describe("Your player ID/name")
+      })
+    },
     async ({ sessionId, playerId }) => {
-      const id = env.GAME_SESSION.idFromName(sessionId);
-      const stub = env.GAME_SESSION.get(id);
-      const result = await stub.lookAround(playerId);
-      
-      return {
-        content: [
-          {
-            type: "text",
-            text: `**${result.room.name}**\n\n${result.room.description}\n\n*${result.room.atmosphere}*\n\n**Visible Objects:**\n${result.objects.map(o => `- ${o.name}: ${o.short_description}`).join('\n')}\n\n**Exits:** ${result.exits.join(', ') || 'none'}\n**Can progress:** ${result.canProgress ? 'Yes (some doors unlocked)' : 'No (find keys/codes first)'}`
-          }
-        ]
-      };
+      const result = await getSession(sessionId).lookAround(playerId);
+      const objects = result.objects.map(o => `- ${o.name}: ${o.short_description}`).join('\n');
+      return textResult(
+        `**${result.room.name}**\n\n${result.room.description}\n\n*${result.room.atmosphere}*\n\n**Visible Objects:**\n${objects}\n\n**Exits:** ${result.exits.join(', ') || 'none'}\n**Can progress:** ${result.canProgress ? 'Yes (some doors unlocked)' : 'No (find keys/codes first)'}`
+      );
     }
   );
   
-  server.tool(
+  server.registerTool(
     "examine_object",
-    z.object({
-      sessionId: z.string().describe("Session ID"),
-      playerId: z.string().describe("Your player ID/name"),
-      objectName: z.string().describe("Name of object to examine (e.g., 'reception-desk')")
-    }),
+    {
+      description: "Inspect an object in the current room closely for clues and hidden items.",
+      inputSchema: z.object({
+        sessionId: z.string().describe("Session ID"),
+        playerId: z.string().describe("Your player ID/name"),
+        objectName: z.string().describe("Name of object to examine (e.g., 'reception-desk')")
+      })
+    },
     async ({ sessionId, playerId, objectName }) => {
-      const id = env.GAME_SESSION.idFromName(sessionId);
-      const stub = env.GAME_SESSION.get(id);
-      
       try {
-        const result = await stub.examineObject(playerId, objectName);
+        const result = await getSession(sessionId).examineObject(playerId, objectName);
         
         let text = `**${result.object.name}**\n\n${result.object.full_description}`;
         
@@ -135,32 +122,29 @@ export function createHeistMcpServer(env: Env): McpServer {
           text += `\n\n🔍 **Discovery:** ${result.specialInfo}`;
         }
         
-        return {
-          content: [{ type: "text", text }]
-        };
+        return textResult(text);
       } catch (error: any) {
-        return {
-          content: [{ type: "text", text: `Error: ${error.message}` }]
-        };
+        return textResult(`Error: ${error.message}`);
       }
     }
   );
   
   // ===== Interaction Tools =====
   
-  server.tool(
+  server.registerTool(
     "use_item",
-    z.object({
-      sessionId: z.string().describe("Session ID"),
-      playerId: z.string().describe("Your player ID/name"),
-      itemName: z.string().describe("Item or object name"),
-      action: z.enum(["take", "use", "open", "unlock", "press", "pull"]).describe("Action to perform"),
-      target: z.string().optional().describe("Target object (for unlock/use actions)")
-    }),
+    {
+      description: "Take an item, use/unlock a door with a key, open an unlocked door to move rooms, or pull/press an object.",
+      inputSchema: z.object({
+        sessionId: z.string().describe("Session ID"),
+        playerId: z.string().describe("Your player ID/name"),
+        itemName: z.string().describe("Item or object name (e.g., 'gallery-a-key')"),
+        action: z.enum(["take", "use", "open", "unlock", "press", "pull"]).describe("Action to perform"),
+        target: z.string().optional().describe("Target door/object (e.g., 'gallery-a' for unlock/open actions)")
+      })
+    },
     async ({ sessionId, playerId, itemName, action, target }) => {
-      const id = env.GAME_SESSION.idFromName(sessionId);
-      const stub = env.GAME_SESSION.get(id);
-      const result = await stub.useItem(playerId, itemName, action, target);
+      const result = await getSession(sessionId).useItem(playerId, itemName, action, target);
       
       let text = result.message;
       
@@ -176,53 +160,43 @@ export function createHeistMcpServer(env: Env): McpServer {
         text += `\n\n📍 Moved to room ${result.roomChanged}. Use look_around to survey the new area.`;
       }
       
-      return {
-        content: [{ type: "text", text }]
-      };
+      return textResult(text);
     }
   );
   
-  server.tool(
+  server.registerTool(
     "open_drawer",
-    z.object({
-      sessionId: z.string().describe("Session ID"),
-      playerId: z.string().describe("Your player ID/name"),
-      drawerId: z.string().describe("Drawer ID (e.g., 'reception-desk-bottom')")
-    }),
+    {
+      description: "Open a drawer and read its contents.",
+      inputSchema: z.object({
+        sessionId: z.string().describe("Session ID"),
+        playerId: z.string().describe("Your player ID/name"),
+        drawerId: z.string().describe("Drawer ID (e.g., 'reception-desk-bottom')")
+      })
+    },
     async ({ sessionId, playerId, drawerId }) => {
-      const id = env.GAME_SESSION.idFromName(sessionId);
-      const stub = env.GAME_SESSION.get(id);
-      const result = await stub.openDrawer(playerId, drawerId);
+      const result = await getSession(sessionId).openDrawer(playerId, drawerId);
       
       if (result.success) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `**Drawer Contents:**\n\n${result.contents}`
-            }
-          ]
-        };
-      } else {
-        return {
-          content: [{ type: "text", text: result.message }]
-        };
+        return textResult(`**Drawer Contents:**\n\n${result.contents}`);
       }
+      return textResult(result.message);
     }
   );
   
-  server.tool(
+  server.registerTool(
     "enter_code",
-    z.object({
-      sessionId: z.string().describe("Session ID"),
-      playerId: z.string().describe("Your player ID/name"),
-      code: z.string().describe("Code to enter"),
-      target: z.string().optional().describe("Target (e.g., 'vault-keypad', 'card-catalog')")
-    }),
+    {
+      description: "Enter a code at a keypad or locked drawer.",
+      inputSchema: z.object({
+        sessionId: z.string().describe("Session ID"),
+        playerId: z.string().describe("Your player ID/name"),
+        code: z.string().describe("Code to enter"),
+        target: z.string().optional().describe("Target (e.g., 'vault-keypad', 'card-catalog')")
+      })
+    },
     async ({ sessionId, playerId, code, target }) => {
-      const id = env.GAME_SESSION.idFromName(sessionId);
-      const stub = env.GAME_SESSION.get(id);
-      const result = await stub.enterCode(playerId, code, target);
+      const result = await getSession(sessionId).enterCode(playerId, code, target);
       
       let text = result.message;
       
@@ -234,69 +208,62 @@ export function createHeistMcpServer(env: Env): McpServer {
         text += `\n\n📍 Moved to room ${result.roomChanged}. Use look_around to survey the new area.`;
       }
       
-      return {
-        content: [{ type: "text", text }]
-      };
+      return textResult(text);
     }
   );
   
   // ===== Team Coordination Tools =====
   
-  server.tool(
+  server.registerTool(
     "get_inventory",
-    z.object({
-      sessionId: z.string().describe("Session ID")
-    }),
+    {
+      description: "List the shared team inventory.",
+      inputSchema: z.object({
+        sessionId: z.string().describe("Session ID")
+      })
+    },
     async ({ sessionId }) => {
-      const id = env.GAME_SESSION.idFromName(sessionId);
-      const stub = env.GAME_SESSION.get(id);
-      const result = await stub.getInventory();
+      const result = await getSession(sessionId).getInventory();
       
       if (result.items.length === 0) {
-        return {
-          content: [{ type: "text", text: "**Team Inventory:** Empty\n\nNo items collected yet." }]
-        };
+        return textResult("**Team Inventory:** Empty\n\nNo items collected yet.");
       }
       
-      const text = `**Team Inventory:**\n\n${result.items.map(item => 
-        `- **${item.item}** (taken by ${item.takenBy})`
-      ).join('\n')}`;
-      
-      return {
-        content: [{ type: "text", text }]
-      };
+      return textResult(
+        `**Team Inventory:**\n\n${result.items.map(item => `- **${item.item}** (taken by ${item.takenBy})`).join('\n')}`
+      );
     }
   );
   
-  server.tool(
+  server.registerTool(
     "get_hints",
-    z.object({
-      sessionId: z.string().describe("Session ID"),
-      playerId: z.string().describe("Your player ID/name"),
-      roomId: z.number().optional().describe("Room number (defaults to current room)")
-    }),
+    {
+      description: "Request the next progressive hint for a room.",
+      inputSchema: z.object({
+        sessionId: z.string().describe("Session ID"),
+        playerId: z.string().describe("Your player ID/name"),
+        roomId: z.number().optional().describe("Room number (defaults to current room)")
+      })
+    },
     async ({ sessionId, playerId, roomId }) => {
-      const id = env.GAME_SESSION.idFromName(sessionId);
-      const stub = env.GAME_SESSION.get(id);
-      const result = await stub.getHints(playerId, roomId);
+      const result = await getSession(sessionId).getHints(playerId, roomId);
       
-      const text = `**Hints for Room ${roomId || '(current)'}:**\n\n${result.hints.map((hint, i) => 
-        `${i + 1}. ${hint}`
-      ).join('\n\n')}\n\n*Hints used: ${result.hintsUsedInRoom}/${result.totalAvailable}*`;
-      
-      return {
-        content: [{ type: "text", text }]
-      };
+      return textResult(
+        `**Hints for Room ${roomId || '(current)'}:**\n\n${result.hints.map((hint, i) => `${i + 1}. ${hint}`).join('\n\n')}\n\n*Hints used: ${result.hintsUsedInRoom}/${result.totalAvailable}*`
+      );
     }
   );
   
   // ===== Agent Briefing =====
   
-  server.tool(
+  server.registerTool(
     "get_briefing",
-    z.object({
-      sessionId: z.string().describe("Session ID")
-    }),
+    {
+      description: "Read the mission briefing for the Examiner agent.",
+      inputSchema: z.object({
+        sessionId: z.string().describe("Session ID")
+      })
+    },
     async ({ sessionId }) => {
       const briefing = `# 🎯 Heist Escape - Mission Briefing
 
@@ -372,9 +339,7 @@ This is an elegant professional operation, not a dark infiltration.
 ---
 *Use \`look_around\` to begin your mission.*`;
       
-      return {
-        content: [{ type: "text", text: briefing }]
-      };
+      return textResult(briefing);
     }
   );
 

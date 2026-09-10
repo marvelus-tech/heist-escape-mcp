@@ -33,8 +33,9 @@ Find the first vault code digit and the key to Gallery A.
 - **phone Post-it**: Hint about key location
 
 ### Exit Strategy
-- Use `gallery-a-key` on `archives-door` to unlock Gallery A
-- Move to Room 2
+- Unlock: `use_item` with itemName `gallery-a-key`, action `unlock`, target `gallery-a`
+- Move: `use_item` with action `open`, target `gallery-a` (moves the team to Room 2)
+- Shortcut: `open` on a locked door works in one step if the team already holds the matching key
 
 **Room 1 Digit: 3**
 
@@ -52,7 +53,11 @@ Find the second vault code digit.
 ### Additional Content
 - **painting-landscape**: Atmospheric flavor
 - **velvet-rope**: Standard museum barrier
-- **archives-door**: Locked; requires solution from Room 1
+- **archives-door**: Locked; the brass `gallery-a-key` from Room 1 opens it too
+
+### Exit Strategy
+- `use_item` with action `open`, target `archives` (or `archives-door`) while holding `gallery-a-key`
+- Moves the team to Room 3
 
 **Room 2 Digit: 8**
 
@@ -72,10 +77,15 @@ Find the third vault code digit and access the catalog drawer.
 2. Use `enter_code` with code `7734` and target `card-catalog`
 3. Drawer unlocks revealing: "Vault exhibition code: **3891**"
 4. This is the COMPLETE 4-digit vault code (assembled from all 4 rooms)
+5. `open_drawer` with `card-catalog-7734` now succeeds (it stays locked until the code is entered)
 
 ### Hidden Content
 - **hidden-painting**: Conceals vault access door
 - **desk-lamp**: Personal touch, no functional purpose
+
+### Exit Strategy
+- `use_item` with itemName `hidden-painting`, action `pull` reveals and unlocks `vault-access`
+- `use_item` with action `open`, target `vault-access` moves the team to Room 4
 
 **Room 3 Digit: 9**
 
@@ -188,10 +198,10 @@ These objects are atmospheric but don't contain puzzle solutions:
 ## Speedrun Strategy (5-10 minutes)
 
 **Optimal Path:**
-1. Room 1: Grab key, check desk bottom drawer (digit 3)
-2. Room 2: Examine display case (digit 8)
-3. Room 3: Open J-L drawer (digit 9), enter 7734 at catalog
-4. Room 4: Check blueprint (digit 1), enter 3891 at keypad
+1. Room 1: Grab key, check desk bottom drawer (digit 3), `open` `gallery-a`
+2. Room 2: Examine display case (digit 8), `open` `archives`
+3. Room 3: Open J-L drawer (digit 9), enter 7734 at catalog, `pull` `hidden-painting`, `open` `vault-access`
+4. Room 4: Check blueprint (digit 1), enter 3891 at keypad (auto-moves to Room 5)
 5. Room 5: Take diamond
 
 **No backtracking required if you remember digits!**

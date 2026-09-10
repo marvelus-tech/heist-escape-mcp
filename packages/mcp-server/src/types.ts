@@ -1,4 +1,5 @@
 // Type definitions for the Heist Escape MCP Server
+import type { GameSession } from "./game-session";
 
 export interface Env {
   GAME_SESSION: DurableObjectNamespace<GameSession>;
@@ -27,7 +28,7 @@ export interface Action {
   timestamp: number;
   player: string;
   action: string;
-  target?: string;
+  target?: string | null;
   result: string;
 }
 

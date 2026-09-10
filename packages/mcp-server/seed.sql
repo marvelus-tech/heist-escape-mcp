@@ -83,7 +83,7 @@ INSERT INTO documents (name, content, clue_type, room_id) VALUES
 -- Puzzle 4: Final diamond claim (interaction-based)
 
 INSERT INTO puzzles (room_id, puzzle_type, solution_hash, success_message, failure_message, unlocks_what) VALUES
-(1, 'keycard', 'gallery-a-key', 'The brass key fits perfectly! The Gallery A door swings open silently.', 'That doesn''t seem to work here.', 'archives-door'),
+(1, 'keycard', 'gallery-a-key', 'The brass key fits perfectly! The Gallery A door swings open silently.', 'That doesn''t seem to work here.', 'gallery-a'),
 
 (3, 'catalog-access', '7734', 'The drawer slides open smoothly. Inside is a catalog card with critical information!', 'That drawer won''t open - you need the right catalog number.', 'card-catalog-7734'),
 
