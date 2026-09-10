@@ -1,5 +1,44 @@
 import { DurableObject } from "cloudflare:workers";
-import type { Env, SessionState, Player, Action, Room, GameObject, Drawer, Puzzle, Hint } from "./types";
+import type { Env, Action, Room, GameObject, Drawer, Puzzle, Hint } from "./types";
+
+// Row shape returned by the action_log table (DO SQL rows need an index-signature-compatible type)
+type ActionRow = { timestamp: number; player: string; action: string; target: string | null; result: string };
+
+// Shape returned by getState() / get_state (polled by Stage and Operator clients)
+export interface SessionStateView {
+  currentRoom: number;
+  unlockedDoors: string[];
+  solvedPuzzles: string[];
+  hintsUsed: Record<number, number>;
+  players: Array<{ player_id: string; name: string; role: string | null }>;
+  inventory: Array<{ item: string; takenBy: string }>;
+  recentActions: Action[];
+}
+
+// Canonical door names == exit names in rooms.exits ('gallery-a', 'archives', 'vault-access', 'vault').
+// Clients may say 'gallery-a-door' or 'archives-door'; normalizeDoor() maps those to the canonical name.
+const EXIT_TO_ROOM: Record<string, number> = {
+  'lobby': 1,
+  'gallery-a': 2,
+  'archives': 3,
+  'vault-access': 4,
+  'vault': 5
+};
+
+// Which doors each key opens. The brass key from the lobby flowers is tagged
+// "Gallery A Access"; the phone Post-it also says it's the key for the Archive door.
+const KEY_OPENS: Record<string, string[]> = {
+  'gallery-a-key': ['gallery-a', 'archives']
+};
+
+// Hidden items that are found by examining a room object rather than being an object themselves.
+const HIDDEN_ITEMS: Record<string, { room: number; foundIn: string; takeMessage: string }> = {
+  'gallery-a-key': {
+    room: 1,
+    foundIn: 'flower-arrangement',
+    takeMessage: "You carefully extract the brass key from the flowers and add it to your shared inventory"
+  }
+};
 
 /**
  * GameSession Durable Object
@@ -73,7 +112,7 @@ export class GameSession extends DurableObject<Env> {
   
   // ===== Session Management =====
   
-  async joinSession(playerId: string, playerName: string, role?: string): Promise<{ success: boolean; message: string; state: any }> {
+  async joinSession(playerId: string, playerName: string, role?: string): Promise<{ success: boolean; message: string; state: SessionStateView }> {
     const existing = this.ctx.storage.sql.exec<{ name: string }>(
       "SELECT name FROM players WHERE player_id = ?",
       playerId
@@ -104,7 +143,7 @@ export class GameSession extends DurableObject<Env> {
     };
   }
   
-  async getState(): Promise<any> {
+  async getState(): Promise<SessionStateView> {
     const currentRoom = parseInt(this.ctx.storage.sql.exec<{ value: string }>(
       "SELECT value FROM session_state WHERE key = 'current_room'"
     ).one()!.value);
@@ -129,7 +168,7 @@ export class GameSession extends DurableObject<Env> {
       "SELECT item_name, picked_up_by FROM inventory"
     ).toArray();
     
-    const recentActions = this.ctx.storage.sql.exec<Action>(
+    const recentActions = this.ctx.storage.sql.exec<ActionRow>(
       "SELECT timestamp, player, action, target, result FROM action_log ORDER BY id DESC LIMIT 20"
     ).toArray();
     
@@ -145,7 +184,7 @@ export class GameSession extends DurableObject<Env> {
   }
   
   async getRecentActions(limit: number = 10): Promise<Action[]> {
-    return this.ctx.storage.sql.exec<Action>(
+    return this.ctx.storage.sql.exec<ActionRow>(
       "SELECT timestamp, player, action, target, result FROM action_log ORDER BY id DESC LIMIT ?",
       limit
     ).toArray().reverse();
@@ -168,9 +207,8 @@ export class GameSession extends DurableObject<Env> {
       "SELECT * FROM objects WHERE room_id = ?"
     ).bind(roomId).all<GameObject>();
     
-    const exits = room.exits.split(',').map(e => e.trim()).filter(e => e !== 'none');
-    const unlockedDoors = this.getUnlockedDoors();
-    const canProgress = exits.some(exit => unlockedDoors.includes(exit) || exit === 'lobby');
+    const exits = this.parseExits(room.exits);
+    const canProgress = exits.some(exit => this.isDoorOpen(exit, roomId));
     
     this.logAction(player, "look_around", room.name, `Surveyed ${room.name}`);
     
@@ -201,7 +239,7 @@ export class GameSession extends DurableObject<Env> {
     if (objectName === 'flower-arrangement') {
       const hasKey = this.hasInventoryItem('gallery-a-key');
       if (!hasKey) {
-        specialInfo = "Searching through the flowers, you find a brass key attached to a tag reading 'Gallery A Access'! (Use use_item to take it)";
+        specialInfo = "Searching through the flowers, you find a brass key attached to a tag reading 'Gallery A Access'! (Use use_item with action 'take' and itemName 'gallery-a-key' to take it)";
       }
     }
     
@@ -216,6 +254,23 @@ export class GameSession extends DurableObject<Env> {
     
     // Handle taking items
     if (action === 'take') {
+      // Hidden items (e.g. the key in the flowers) are not rows in `objects`, so check them
+      // before the room-object lookup. Taking the container ("flower-arrangement") also works.
+      const hiddenName = HIDDEN_ITEMS[itemName] ? itemName
+        : Object.keys(HIDDEN_ITEMS).find(k => HIDDEN_ITEMS[k].foundIn === itemName);
+      if (hiddenName) {
+        const hidden = HIDDEN_ITEMS[hiddenName];
+        if (hidden.room !== roomId) {
+          return { success: false, message: "Object not found in this room" };
+        }
+        if (this.hasInventoryItem(hiddenName)) {
+          return { success: false, message: `${hiddenName} is already in the shared inventory` };
+        }
+        this.addToInventory(hiddenName, player);
+        this.logAction(player, "take", hiddenName, `${player} took the ${hiddenName}`);
+        return { success: true, message: hidden.takeMessage, itemAdded: hiddenName };
+      }
+      
       const object = await this.env.DB.prepare(
         "SELECT * FROM objects WHERE room_id = ? AND name = ?"
       ).bind(roomId, itemName).first<GameObject>();
@@ -224,15 +279,8 @@ export class GameSession extends DurableObject<Env> {
         return { success: false, message: "Object not found in this room" };
       }
       
-      if (!object.is_takeable && itemName !== 'gallery-a-key') {
+      if (!object.is_takeable) {
         return { success: false, message: "You can't take that" };
-      }
-      
-      // Special handling for hidden key
-      if (itemName === 'gallery-a-key') {
-        this.addToInventory('gallery-a-key', player);
-        this.logAction(player, "take", itemName, `${player} took the brass gallery key`);
-        return { success: true, message: "You carefully extract the brass key from the flowers and add it to your shared inventory", itemAdded: 'gallery-a-key' };
       }
       
       this.addToInventory(itemName, player);
@@ -240,30 +288,65 @@ export class GameSession extends DurableObject<Env> {
       return { success: true, message: `Added ${itemName} to shared inventory`, itemAdded: itemName };
     }
     
-    // Handle using keys
-    if (action === 'unlock' && target) {
-      if (itemName === 'gallery-a-key' && target === 'archives-door') {
-        if (this.hasInventoryItem('gallery-a-key')) {
-          this.unlockDoor('archives');
-          this.addSolvedPuzzle('archives-door-unlock');
-          this.logAction(player, "unlock", target, `${player} unlocked the archives door`);
-          return { success: true, message: "The brass key fits perfectly! The Archives door swings open silently.", doorUnlocked: 'archives' };
-        } else {
-          return { success: false, message: "You don't have that key" };
-        }
+    const exits = await this.getRoomExits(roomId);
+    
+    // Handle using keys on doors: use_item { itemName: 'gallery-a-key', action: 'unlock'|'use', target: 'gallery-a' }
+    if ((action === 'unlock' || action === 'use') && KEY_OPENS[itemName]) {
+      if (!this.hasInventoryItem(itemName)) {
+        return { success: false, message: "You don't have that key" };
       }
+      // Default to the first locked exit in this room that the key fits
+      const door = target
+        ? this.normalizeDoor(target)
+        : exits.find(e => KEY_OPENS[itemName].includes(e) && !this.isDoorOpen(e, roomId));
+      if (!door || !exits.includes(door)) {
+        return { success: false, message: `There's no ${target || 'locked'} door in this room. Exits: ${exits.join(', ')}` };
+      }
+      if (!KEY_OPENS[itemName].includes(door)) {
+        return { success: false, message: `The ${itemName} doesn't fit the ${door} door` };
+      }
+      this.unlockDoor(door);
+      this.addSolvedPuzzle(`${door}-door-unlock`);
+      this.logAction(player, "unlock", door, `${player} unlocked the ${door} door`);
+      return {
+        success: true,
+        message: `The brass key fits perfectly! The ${this.doorLabel(door)} door swings open silently. Use use_item with action 'open' and target '${door}' to go through.`,
+        doorUnlocked: door
+      };
     }
     
-    // Handle opening doors
-    if (action === 'open' && target) {
-      const unlocked = this.getUnlockedDoors();
-      if (unlocked.includes(target)) {
-        this.setCurrentRoom(this.getRoomIdFromExit(target));
-        this.logAction(player, "move", target, `${player} moved to ${target}`);
-        return { success: true, message: `Moving to ${target}...`, roomChanged: this.getCurrentRoom() };
-      } else {
-        return { success: false, message: "That door is locked" };
+    // Handle moving the painting that hides the Vault Access door (room 3)
+    if (itemName === 'hidden-painting' && roomId === 3 && ['pull', 'press', 'use', 'open'].includes(action)) {
+      this.unlockDoor('vault-access');
+      this.addSolvedPuzzle('hidden-painting');
+      this.logAction(player, "move_painting", itemName, `${player} swung the painting aside, revealing the Vault Access door`);
+      return {
+        success: true,
+        message: "The painting swings aside on its hinges, revealing a reinforced door labeled 'Vault Access'. It's unlocked. Use use_item with action 'open' and target 'vault-access' to go through.",
+        doorUnlocked: 'vault-access'
+      };
+    }
+    
+    // Handle opening doors / moving between rooms
+    if (action === 'open') {
+      const door = this.normalizeDoor(target || itemName);
+      if (!exits.includes(door)) {
+        return { success: false, message: `There's no ${door} exit here. Exits: ${exits.join(', ')}` };
       }
+      if (!this.isDoorOpen(door, roomId)) {
+        // Convenience: if the team holds a key that fits, open it in one step
+        const key = Object.keys(KEY_OPENS).find(k => KEY_OPENS[k].includes(door) && this.hasInventoryItem(k));
+        if (!key) {
+          return { success: false, message: `That door is locked. Find the key or code that opens ${door}.` };
+        }
+        this.unlockDoor(door);
+        this.addSolvedPuzzle(`${door}-door-unlock`);
+        this.logAction(player, "unlock", door, `${player} unlocked the ${door} door with the ${key}`);
+      }
+      const newRoom = EXIT_TO_ROOM[door];
+      this.setCurrentRoom(newRoom);
+      this.logAction(player, "move", door, `${player} moved to ${this.doorLabel(door)}`);
+      return { success: true, message: `You step through the ${this.doorLabel(door)} door...`, roomChanged: newRoom };
     }
     
     return { success: false, message: "That action doesn't work here" };
@@ -280,7 +363,8 @@ export class GameSession extends DurableObject<Env> {
       return { success: false, message: "Drawer not found" };
     }
     
-    if (drawer.locked) {
+    // Locked drawers open once their code puzzle is solved (e.g. enter_code 7734 -> 'card-catalog-7734')
+    if (drawer.locked && !this.getSolvedPuzzles().includes(drawerId)) {
       return { success: false, message: "This drawer is locked" };
     }
     
@@ -411,9 +495,10 @@ export class GameSession extends DurableObject<Env> {
   }
   
   private unlockDoor(doorName: string): void {
+    const door = this.normalizeDoor(doorName);
     const doors = this.getUnlockedDoors();
-    if (!doors.includes(doorName)) {
-      doors.push(doorName);
+    if (!doors.includes(door)) {
+      doors.push(door);
       this.ctx.storage.sql.exec(
         "UPDATE session_state SET value = ? WHERE key = 'unlocked_doors'",
         JSON.stringify(doors)
@@ -421,11 +506,42 @@ export class GameSession extends DurableObject<Env> {
     }
   }
   
-  private addSolvedPuzzle(puzzleId: string): void {
+  /** 'gallery-a-door' / 'Gallery A' -> 'gallery-a'; unknown names pass through unchanged. */
+  private normalizeDoor(name: string): string {
+    return name.trim().toLowerCase().replace(/\s+/g, '-').replace(/-door$/, '');
+  }
+  
+  private doorLabel(door: string): string {
+    return door.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  }
+  
+  private parseExits(exits: string): string[] {
+    return exits.split(',').map(e => e.trim()).filter(e => e && e !== 'none');
+  }
+  
+  private async getRoomExits(roomId: number): Promise<string[]> {
+    const room = await this.env.DB.prepare(
+      "SELECT exits FROM rooms WHERE id = ?"
+    ).bind(roomId).first<{ exits: string }>();
+    return room ? this.parseExits(room.exits) : [];
+  }
+  
+  /** A door is passable if it was unlocked, or if it leads back to a room the team already passed through. */
+  private isDoorOpen(door: string, currentRoom: number): boolean {
+    const leadsTo = EXIT_TO_ROOM[door];
+    if (leadsTo !== undefined && leadsTo < currentRoom) return true;
+    return this.getUnlockedDoors().includes(door);
+  }
+  
+  private getSolvedPuzzles(): string[] {
     const result = this.ctx.storage.sql.exec<{ value: string }>(
       "SELECT value FROM session_state WHERE key = 'solved_puzzles'"
     ).toArray()[0];
-    const puzzles = JSON.parse(result!.value);
+    return JSON.parse(result!.value);
+  }
+  
+  private addSolvedPuzzle(puzzleId: string): void {
+    const puzzles = this.getSolvedPuzzles();
     if (!puzzles.includes(puzzleId)) {
       puzzles.push(puzzleId);
       this.ctx.storage.sql.exec(
@@ -479,16 +595,5 @@ export class GameSession extends DurableObject<Env> {
       target || null,
       result
     );
-  }
-  
-  private getRoomIdFromExit(exitName: string): number {
-    const roomMap: Record<string, number> = {
-      'lobby': 1,
-      'gallery-a': 2,
-      'archives': 3,
-      'vault-access': 4,
-      'vault': 5
-    };
-    return roomMap[exitName] || 1;
   }
 }
