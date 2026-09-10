@@ -8,22 +8,27 @@ import {
   prefersReducedMotion,
 } from './scene/materials';
 import {
+  DESK_TOP_Y,
   bookshelf,
   brassWindow,
   column,
+  crystalVase,
   displayCase,
   floorInlay,
   galaBanner,
   goldTrim,
   lightStrip,
   pedestal,
+  receptionDesk,
   revealEdge,
   sconce,
   securityCamera,
+  skeletonKey,
   sunburstDiamond,
   vaultDoor,
   wainscot,
 } from './scene/props';
+import { FocusFx, type FocusStyle } from './scene/focus-fx';
 
 interface Room {
   id: number;
@@ -59,6 +64,15 @@ const IDLE_PULSE_PERIOD_MS = 2600;
 const EXAMINE_BOOST = 0.6;
 const EXAMINE_DURATION_MS = 1400;
 
+/** Name Stage can use to focus/pulse the floating lobby key (it is an accent, not a server object). */
+export const LOBBY_KEY_NAME = 'gallery-a-key';
+/** Lobby heroes from the locked still: outlined vase + key in its gold mote cloud. */
+const LOBBY_DEFAULT_FOCUS = ['flower-arrangement', LOBBY_KEY_NAME];
+const KEY_BOB_PERIOD_MS = 3200;
+const KEY_BOB_AMPLITUDE = 0.06;
+/** Desk sits forward of the rotunda centre so it fills the lower third from the Stage camera (0, 3, 8). */
+const LOBBY_DESK = new THREE.Vector3(0, 0, 1.6);
+
 /**
  * Scene Manager for Heist Escape (Module B: scene art direction)
  *
@@ -77,6 +91,10 @@ export class SceneManager {
   private heroMaterials: THREE.MeshStandardMaterial[] = [];
   private heroGlows: THREE.Sprite[] = [];
   private spinners: THREE.Object3D[] = [];
+  /** Accent heroes (e.g. the lobby key) addressable by name alongside server objects. */
+  private focusTargets: Map<string, THREE.Object3D> = new Map();
+  private focusFx = new FocusFx();
+  private floaters: Array<{ root: THREE.Object3D; baseY: number; phase: number }> = [];
   private reducedMotion = prefersReducedMotion();
 
   constructor(scene: THREE.Scene) {
@@ -98,6 +116,8 @@ export class SceneManager {
     this.buildWalls(room.id);
     this.addRoomAccents(room.id);
     objects.forEach(obj => this.addRoomObject(obj));
+    // Auto-highlight the still's heroes; Stage can override with setFocus() later.
+    if (room.id === 1) this.setFocus(LOBBY_DEFAULT_FOCUS);
   }
 
   private setupLighting(roomId: number): void {
@@ -170,12 +190,15 @@ export class SceneManager {
     this.heroMaterials = [];
     this.heroGlows = [];
     this.spinners = [];
+    this.floaters = [];
+    this.focusTargets.clear();
+    this.focusFx.clear();
   }
 
   /** Removes children and frees their GPU resources (shared textures are cached, not disposed). */
   private disposeGroup(group: THREE.Group): void {
     group.traverse(child => {
-      if (child instanceof THREE.Mesh || child instanceof THREE.Sprite) {
+      if (child instanceof THREE.Mesh || child instanceof THREE.Sprite || child instanceof THREE.Points || child instanceof THREE.Line) {
         child.geometry?.dispose();
         const mats = Array.isArray(child.material) ? child.material : [child.material];
         mats.forEach((m: THREE.Material) => m.dispose());
@@ -281,6 +304,7 @@ export class SceneManager {
           vitrine.position.set(x, 0, z);
           this.roomRoot.add(vitrine);
         }
+        this.addLobbyKey();
         break;
 
       case 2: // Gallery A: warm spotlit gallery, columns, artefact cases
@@ -369,6 +393,32 @@ export class SceneManager {
     }
   }
 
+  /**
+   * Floating brass key above the reception desk, wrapped in its gold mote cloud
+   * and a warm point light so the dust also lands on the desk. Registered as a
+   * focus target (LOBBY_KEY_NAME) so Stage can pulse/focus it like a server object.
+   */
+  private addLobbyKey(): void {
+    const key = skeletonKey(0.75);
+    key.name = LOBBY_KEY_NAME;
+    const baseY = DESK_TOP_Y + 1.05;
+    key.position.set(LOBBY_DESK.x - 0.35, baseY, LOBBY_DESK.z + 0.05);
+    // Diagonal pose from the still: bow up-left, bit down-right, slight twist toward camera.
+    key.rotation.set(0.15, 0.35, -0.65);
+
+    const core = makeGlow(0xffd27a, 1.4, 0.3);
+    const halo = makeGlow(0xffc65a, 3.0, 0.14);
+    core.name = halo.name = 'hero-glow';
+    key.add(core, halo);
+    const light = new THREE.PointLight(0xffd27a, 9, 6, 2);
+    key.add(light);
+
+    this.roomRoot.add(key);
+    this.registerShimmer(key);
+    this.focusTargets.set(LOBBY_KEY_NAME, key);
+    this.floaters.push({ root: key, baseY, phase: 0 });
+  }
+
   private addRoomObject(obj: GameObject): void {
     const position = this.getObjectPosition(obj.name);
     const mesh = this.createObjectMesh(obj.name);
@@ -388,10 +438,12 @@ export class SceneManager {
 
   private getObjectPosition(name: string): THREE.Vector3 {
     const positions: Record<string, THREE.Vector3> = {
-      'reception-desk': new THREE.Vector3(0, 0, -2),
-      'visitor-log': new THREE.Vector3(0.6, 0.85, -2.1),
+      // Lobby hero composition (locked still): desk in the foreground, vase on
+      // the right, log on the left, key floating above (see addLobbyKey).
+      'reception-desk': LOBBY_DESK.clone(),
+      'visitor-log': LOBBY_DESK.clone().add(new THREE.Vector3(-1.05, DESK_TOP_Y + 0.03, 0.15)),
       'poster-board': new THREE.Vector3(-6, 2, -9.5),
-      'flower-arrangement': new THREE.Vector3(-0.7, 0.82, -1.9),
+      'flower-arrangement': LOBBY_DESK.clone().add(new THREE.Vector3(0.85, DESK_TOP_Y, -0.15)),
 
       'display-case-west': new THREE.Vector3(-4, 0, 2),
       'archives-door': new THREE.Vector3(0, 1.3, -9.5),
@@ -420,7 +472,7 @@ export class SceneManager {
     if (name.includes('lamp')) return this.createLamp();
     if (name.includes('rope')) return this.createVelvetRope();
     if (name.includes('shelves')) return this.createSteelShelves();
-    if (name.includes('desk')) return this.createDesk();
+    if (name.includes('desk')) return receptionDesk();
     if (name.includes('door')) return this.createDoor();
     if (name.includes('display-case')) return displayCase(1.5, 1.2, 1.0, 'sphere');
     if (name.includes('cabinet') || name.includes('locker')) return this.createCabinet();
@@ -428,30 +480,10 @@ export class SceneManager {
     if (name.includes('keypad')) return this.createKeypad();
     if (name.includes('painting') || name.includes('blueprint')) return this.createPainting(name);
     if (name.includes('catalog')) return this.createCatalog();
-    if (name.includes('flower')) return this.createFlowerVase();
+    if (name.includes('flower')) return crystalVase();
     if (name.includes('poster') || name.includes('controls')) return this.createPosterBoard();
     if (name.includes('log')) return this.createBook();
     return this.createGenericObject();
-  }
-
-  private createDesk(): THREE.Object3D {
-    const group = new THREE.Group();
-    const wood = materials.mahogany();
-    const brass = materials.brass();
-
-    const top = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.08, 1.1), wood);
-    top.position.y = 0.78;
-    group.add(top);
-    const inlay = new THREE.Mesh(new THREE.BoxGeometry(2.66, 0.02, 1.16), brass);
-    inlay.position.y = 0.73;
-    group.add(inlay);
-    const body = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.66, 0.95), wood);
-    body.position.y = 0.4;
-    group.add(body);
-    const kick = new THREE.Mesh(new THREE.BoxGeometry(2.45, 0.08, 1.0), brass);
-    kick.position.y = 0.04;
-    group.add(kick);
-    return group;
   }
 
   private createDoor(): THREE.Object3D {
@@ -585,25 +617,6 @@ export class SceneManager {
         group.add(pull);
       }
     }
-    return group;
-  }
-
-  private createFlowerVase(): THREE.Object3D {
-    const group = new THREE.Group();
-    const vase = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.16, 0.34, 20), materials.glass());
-    vase.position.y = 0.17;
-    group.add(vase);
-    const petal = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5, envMapIntensity: 0.8 });
-    const gold = materials.gold();
-    for (let i = 0; i < 6; i++) {
-      const angle = (i / 6) * Math.PI * 2;
-      const bloom = new THREE.Mesh(new THREE.SphereGeometry(0.075, 10, 8), petal);
-      bloom.position.set(Math.cos(angle) * 0.12, 0.44 + (i % 2) * 0.05, Math.sin(angle) * 0.12);
-      group.add(bloom);
-    }
-    const centre = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 8), gold);
-    centre.position.y = 0.52;
-    group.add(centre);
     return group;
   }
 
@@ -776,11 +789,51 @@ export class SceneManager {
     this.interactables.set(root, { root, tinted, outline, halo, phase: Math.random() * Math.PI * 2 });
   }
 
+  /** Server objects first, then accent heroes such as the lobby key. */
+  private resolveObject(object: THREE.Object3D | string): THREE.Object3D | undefined {
+    if (typeof object !== 'string') return object;
+    return this.interactableObjects.get(object) ?? this.focusTargets.get(object);
+  }
+
   /** Hero-moment hook: brief stronger emissive on an examined object. Accepts the object or its name. */
   pulseObject(object: THREE.Object3D | string): void {
-    const root = typeof object === 'string' ? this.interactableObjects.get(object) : object;
+    const root = this.resolveObject(object);
     if (!root) return;
     this.pulsingObjects.set(root, { startTime: performance.now(), duration: EXAMINE_DURATION_MS });
+    this.focusFx.pulse(root, EXAMINE_DURATION_MS);
+  }
+
+  /**
+   * Focus API for Stage: ice-cyan neon outline (+ gold motes for the key) on
+   * the named objects, replacing whatever was focused before. Unknown names are
+   * ignored so callers can pass story ids without checking the room first.
+   */
+  setFocus(objects: Array<THREE.Object3D | string>, style: Partial<FocusStyle> = {}): void {
+    const roots = objects
+      .map(object => this.resolveObject(object))
+      .filter((root): root is THREE.Object3D => root !== undefined);
+    this.focusFx.set([]);
+    this.interactables.forEach(entry => { entry.outline.visible = true; });
+    for (const root of roots) {
+      const isKey = root.name === LOBBY_KEY_NAME;
+      this.focusFx.add(root, { particles: isKey, ...style });
+      // The generic 1.03-scale hull would double the line; the sharp focus hull replaces it.
+      const generic = this.interactables.get(root);
+      if (generic) generic.outline.visible = false;
+    }
+  }
+
+  clearFocus(): void {
+    this.setFocus([]);
+  }
+
+  /** Names currently under focus treatment (for HUD sync or debugging). */
+  getFocusedNames(): string[] {
+    const names: string[] = [];
+    const check = (name: string, root: THREE.Object3D) => { if (this.focusFx.has(root)) names.push(name); };
+    this.interactableObjects.forEach((root, name) => check(name, root));
+    this.focusTargets.forEach((root, name) => check(name, root));
+    return names;
   }
 
   update(): void {
@@ -788,6 +841,15 @@ export class SceneManager {
     const breathe = this.reducedMotion
       ? 0
       : Math.sin((now / IDLE_PULSE_PERIOD_MS) * Math.PI * 2);
+
+    this.focusFx.update(now, this.reducedMotion);
+    if (!this.reducedMotion) {
+      this.floaters.forEach(({ root, baseY, phase }) => {
+        const t = phase + (now / KEY_BOB_PERIOD_MS) * Math.PI * 2;
+        root.position.y = baseY + Math.sin(t) * KEY_BOB_AMPLITUDE;
+        root.rotation.y = 0.35 + Math.sin(t * 0.5) * 0.3;
+      });
+    }
 
     this.interactables.forEach(({ root, tinted, outline, halo, phase }) => {
       let boost = 0;
