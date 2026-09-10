@@ -336,7 +336,7 @@ export class StagePage {
       this.render();
     } catch (error) {
       console.error('Failed to start session:', error);
-      alert('Failed to start demo. Make sure the server is running.');
+      alert('Failed to start demo: ' + (error.message || error));
     }
   }
   

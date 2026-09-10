@@ -18,6 +18,12 @@
   --hj-shadow: 0 10px 30px rgba(29, 36, 48, 0.18), 0 1px 0 rgba(255, 255, 255, 0.7) inset;
   --hj-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --hj-ease-pop: cubic-bezier(0.34, 1.4, 0.64, 1);
+  /* Placement tokens: override on .hj-root from the host layout if needed. */
+  --hj-toast-top: 0.9rem;
+  --hj-examine-left: 1rem;
+  --hj-examine-top: 4.6rem;
+  --hj-ribbon-bottom: 1.25rem;
+  --hj-ribbon-x: 50%;
   position: relative;
 }
 
@@ -25,7 +31,7 @@
 
 .hj-toasts {
   position: absolute;
-  top: 0.9rem;
+  top: var(--hj-toast-top);
   left: 50%;
   transform: translateX(-50%);
   z-index: 30;
@@ -213,8 +219,8 @@
 
 .hj-examine {
   position: absolute;
-  left: 1rem;
-  top: 4.6rem;
+  left: var(--hj-examine-left);
+  top: var(--hj-examine-top);
   z-index: 20;
   width: min(300px, 44%);
   padding: 0.95rem 1.05rem 0.85rem;
@@ -371,8 +377,8 @@
 
 .hj-ribbon {
   position: absolute;
-  left: 50%;
-  bottom: 1.25rem;
+  left: var(--hj-ribbon-x);
+  bottom: var(--hj-ribbon-bottom);
   z-index: 25;
   display: flex;
   align-items: center;

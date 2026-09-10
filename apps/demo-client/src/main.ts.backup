@@ -9,7 +9,7 @@
 
 import { StageApp } from './stage/StageApp';
 
-const API_BASE = import.meta.env.VITE_API_BASE || '';
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8787';
 const MCP_URL = import.meta.env.VITE_MCP_URL || 'http://localhost:8787/mcp';
 
 console.log('🎯 Heist Escape Stage');

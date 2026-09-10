@@ -6,7 +6,7 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/api': {
-        target: 'http://localhost:8787',
+        target: process.env.VITE_API_BASE || 'http://localhost:8787',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, '/api')
       }
@@ -17,8 +17,7 @@ export default defineConfig({
     sourcemap: true
   },
   define: {
-    'import.meta.env.VITE_API_BASE': JSON.stringify(''),
-    'import.meta.env.VITE_MCP_URL': JSON.stringify(process.env.VITE_MCP_URL || 'http://localhost:8787/mcp'),
-    'import.meta.env.VITE_BASE_PATH': JSON.stringify(process.env.VITE_BASE_PATH || '/')
+    'import.meta.env.VITE_API_BASE': JSON.stringify(process.env.VITE_API_BASE || 'http://localhost:8787'),
+    'import.meta.env.VITE_MCP_URL': JSON.stringify(process.env.VITE_MCP_URL || 'http://localhost:8787/mcp')
   }
 });
