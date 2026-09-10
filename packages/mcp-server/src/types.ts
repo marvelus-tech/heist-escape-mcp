@@ -76,3 +76,30 @@ export interface Hint {
   sequence: number;
   hint_text: string;
 }
+
+// ===== Story-Logic =====
+
+/**
+ * Finale outcome exposed on get_state for the Stage.
+ * 'replica'   -> the pedestal stone (a decoy) is in inventory; the twist is live.
+ * 'authentic' -> the real Sunburst Diamond from the steel shelves is in inventory; true win.
+ * false       -> nothing claimed yet.
+ */
+export type HeistOutcome = 'replica' | 'authentic' | false;
+
+/** Boolean story flags persisted per session (finale state machine + Elena reveal). */
+export interface StoryFlags {
+  /** Catalog drawer 7734 opened; Elena's note has been read. */
+  elena_revealed?: boolean;
+  /** The pedestal "Sunburst Diamond" was taken. Apparent success. */
+  replica_taken?: boolean;
+  /** Someone examined the pedestal stone closely enough to spot the replica evidence. */
+  replica_identified?: boolean;
+  /** curator-keycard was used on steel-shelves; the authentic stone can now be taken. */
+  shelves_unlocked?: boolean;
+  /** sunburst-diamond-authentic is in inventory. True heist complete. */
+  authentic_taken?: boolean;
+}
+
+/** Who a briefing is written for. Operator/watch get the cover story; examiner gets the truth. */
+export type BriefingAudience = 'operator' | 'examiner' | 'watch';

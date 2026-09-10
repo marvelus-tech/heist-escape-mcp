@@ -1,5 +1,5 @@
 import { createMcpHandler } from "agents/mcp/server";
-import { createHeistMcpServer } from "./mcp-server";
+import { createHeistMcpServer, resolveBriefing } from "./mcp-server";
 import { GameSession } from "./game-session";
 import type { Env } from "./types";
 
@@ -65,7 +65,8 @@ export default {
             "open_drawer",
             "enter_code",
             "get_inventory",
-            "get_hints"
+            "get_hints",
+            "get_briefing"
           ],
           rooms: 5,
           cooperative: true,
@@ -164,6 +165,11 @@ async function handleRestToolCall(tool: string, params: Record<string, any>, env
     case "get_hints": {
       const { playerId, roomId } = params;
       return await stub.getHints(playerId, roomId);
+    }
+    
+    case "get_briefing": {
+      const { playerId, role, classified } = params;
+      return await resolveBriefing(env, { sessionId, playerId, role, classified: classified === true || classified === 'true' });
     }
     
     default:

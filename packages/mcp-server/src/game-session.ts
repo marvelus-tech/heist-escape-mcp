@@ -1,5 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-import type { Env, Action, Room, GameObject, Drawer, Puzzle, Hint } from "./types";
+import type { Env, Action, Room, GameObject, Drawer, Puzzle, Hint, HeistOutcome, StoryFlags } from "./types";
 
 // Row shape returned by the action_log table (DO SQL rows need an index-signature-compatible type)
 type ActionRow = { timestamp: number; player: string; action: string; target: string | null; result: string };
@@ -13,7 +13,18 @@ export interface SessionStateView {
   players: Array<{ player_id: string; name: string; role: string | null }>;
   inventory: Array<{ item: string; takenBy: string }>;
   recentActions: Action[];
+  /** Finale twist state for Stage juice: false until a diamond is taken. */
+  heistComplete: HeistOutcome;
+  /** Story flags (elena_revealed, replica_taken, shelves_unlocked, ...). */
+  flags: StoryFlags;
 }
+
+// Item names shared with Story-Seed. Keep these stable; seed.sql prose refers to them.
+const PEDESTAL_DIAMOND = 'sunburst-diamond';            // the replica on the pedestal (row in `objects`)
+const AUTHENTIC_DIAMOND = 'sunburst-diamond-authentic'; // hidden in steel-shelves, gated by the keycard
+const CURATOR_KEYCARD = 'curator-keycard';              // hidden in maintenance-locker
+const SHELVES = 'steel-shelves';
+const VAULT_ROOM = 5;
 
 // Canonical door names == exit names in rooms.exits ('gallery-a', 'archives', 'vault-access', 'vault').
 // Clients may say 'gallery-a-door' or 'archives-door'; normalizeDoor() maps those to the canonical name.
@@ -32,11 +43,32 @@ const KEY_OPENS: Record<string, string[]> = {
 };
 
 // Hidden items that are found by examining a room object rather than being an object themselves.
-const HIDDEN_ITEMS: Record<string, { room: number; foundIn: string; takeMessage: string }> = {
+// `requiresFlag` gates the take behind a story flag (e.g. the shelves must be unlocked first).
+interface HiddenItem {
+  room: number;
+  foundIn: string;
+  takeMessage: string;
+  requiresFlag?: keyof StoryFlags;
+  lockedMessage?: string;
+}
+
+const HIDDEN_ITEMS: Record<string, HiddenItem> = {
   'gallery-a-key': {
     room: 1,
     foundIn: 'flower-arrangement',
     takeMessage: "You carefully extract the brass key from the flowers and add it to your shared inventory"
+  },
+  [CURATOR_KEYCARD]: {
+    room: 4,
+    foundIn: 'maintenance-locker',
+    takeMessage: "You slip the curator keycard out from behind the flashlight. The lanyard still smells faintly of jasmine. Added to shared inventory."
+  },
+  [AUTHENTIC_DIAMOND]: {
+    room: VAULT_ROOM,
+    foundIn: SHELVES,
+    requiresFlag: 'shelves_unlocked',
+    lockedMessage: "Shelf 12 holds a steel transit case with a card reader. The reader blinks red: CURATOR AUTHORIZATION REQUIRED. Use the curator-keycard on steel-shelves first.",
+    takeMessage: "You lift the stone from the transit case. It is heavier than the one on the pedestal, and under the LED panels its fire is uneven, alive, unmistakably real. The Sunburst Diamond, the authentic one, is in your hands. Elena was right."
   }
 };
 
@@ -107,6 +139,11 @@ export class GameSession extends DurableObject<Env> {
           "INSERT INTO session_state (key, value) VALUES ('hints_used', '{}')"
         );
       }
+
+      // Runs for new AND existing sessions so DOs created before the finale twist shipped get the row.
+      this.ctx.storage.sql.exec(
+        "INSERT OR IGNORE INTO session_state (key, value) VALUES ('story_flags', '{}')"
+      );
     });
   }
   
@@ -179,8 +216,19 @@ export class GameSession extends DurableObject<Env> {
       hintsUsed,
       players,
       inventory: inventory.map(i => ({ item: i.item_name, takenBy: i.picked_up_by })),
-      recentActions: recentActions.reverse()
+      recentActions: recentActions.reverse(),
+      heistComplete: this.getHeistOutcome(),
+      flags: this.getFlags()
     };
+  }
+
+  /** Role a player joined with ('examiner' | 'operator' | 'watch' | ...), or undefined if unknown. */
+  async getPlayerRole(playerId: string): Promise<string | undefined> {
+    const row = this.ctx.storage.sql.exec<{ role: string | null }>(
+      "SELECT role FROM players WHERE player_id = ?",
+      playerId
+    ).toArray()[0];
+    return row?.role ?? undefined;
   }
   
   async getRecentActions(limit: number = 10): Promise<Action[]> {
@@ -235,20 +283,48 @@ export class GameSession extends DurableObject<Env> {
     
     let specialInfo: string | undefined;
     
-    // Check for hidden items
-    if (objectName === 'flower-arrangement') {
-      const hasKey = this.hasInventoryItem('gallery-a-key');
-      if (!hasKey) {
-        specialInfo = "Searching through the flowers, you find a brass key attached to a tag reading 'Gallery A Access'! (Use use_item with action 'take' and itemName 'gallery-a-key' to take it)";
-      }
+    // Hidden items: flower-arrangement -> gallery-a-key, maintenance-locker -> curator-keycard,
+    // steel-shelves -> sunburst-diamond-authentic (only once the shelves are unlocked).
+    if (objectName === 'flower-arrangement' && !this.hasInventoryItem('gallery-a-key')) {
+      specialInfo = "Searching through the flowers, you find a brass key attached to a tag reading 'Gallery A Access'! (Use use_item with action 'take' and itemName 'gallery-a-key' to take it)";
+    } else if (objectName === 'maintenance-locker' && !this.hasInventoryItem(CURATOR_KEYCARD)) {
+      specialInfo = "Behind the flashlight hangs a curator keycard on a lanyard. The photo is Dr. Elena Bright's; the access level reads CURATOR - ALL STORAGE. Not something a curator leaves in a mop locker by accident. (use_item action 'take', itemName 'curator-keycard')";
+    } else if (objectName === PEDESTAL_DIAMOND) {
+      specialInfo = this.examinePedestalDiamond();
+    } else if (objectName === SHELVES) {
+      specialInfo = this.examineShelves();
     }
     
     this.logAction(player, "examine", objectName, `Examined ${object.name}`);
     
     return { object, specialInfo };
   }
+
+  /** Pedestal stone: reveals replica evidence whether it is still in the case or already taken. */
+  private examinePedestalDiamond(): string {
+    const flags = this.getFlags();
+    this.setFlag('replica_identified', true);
+    if (flags.replica_taken || this.hasInventoryItem(PEDESTAL_DIAMOND)) {
+      return "You turn the stone over in your hand. Along the girdle, too fine to see from behind glass, a laser inscription: BMT-EXH / REPLICA / DISPLAY ONLY. It is cubic zirconia with a very good cut. Whoever set this on the pedestal wanted it taken. Elena's note said to doubt the pedestal. The real stone is still in this vault. Check the steel-shelves.";
+    }
+    return "Press your face to the case and the illusion slips. The fire is too even, every flash the same colour. A 45-carat yellow diamond should throw warm and cool light both. Along the girdle, a hairline laser inscription: BMT-EXH / REPLICA. The 'Unlock' button was disarmed on purpose. Someone wanted this stone taken and reported as the Sunburst. Doubt the pedestal; the steel-shelves deserve a closer look.";
+  }
+
+  /** Steel shelves: state-dependent nudge toward the authentic stone. */
+  private examineShelves(): string {
+    if (this.hasInventoryItem(AUTHENTIC_DIAMOND)) {
+      return "Shelf 12's transit case sits open and empty. You already hold what it protected.";
+    }
+    if (this.getFlags().shelves_unlocked) {
+      return "Shelf 12's transit case is open. Inside, on grey foam cut to its exact outline, sits a yellow diamond that drinks the light and throws it back in a dozen shades. (use_item action 'take', itemName 'sunburst-diamond-authentic')";
+    }
+    if (this.hasInventoryItem(CURATOR_KEYCARD)) {
+      return "Among the catalogued cases, one on shelf 12 is different: a steel transit case with a card reader, tagged in Elena's handwriting 'M - do not move until gala'. The reader wants a curator credential. You have one. (use_item itemName 'curator-keycard', action 'use', target 'steel-shelves')";
+    }
+    return "Among the catalogued cases, one on shelf 12 is different: a steel transit case with a card reader instead of a label, tagged in Elena's handwriting 'M - do not move until gala'. The reader blinks red. Curator authorization required. The maintenance locker in the corridor had a keycard.";
+  }
   
-  async useItem(playerId: string, itemName: string, action: string, target?: string): Promise<{ success: boolean; message: string; itemAdded?: string; doorUnlocked?: string; roomChanged?: number }> {
+  async useItem(playerId: string, itemName: string, action: string, target?: string): Promise<{ success: boolean; message: string; itemAdded?: string; doorUnlocked?: string; roomChanged?: number; heistComplete?: HeistOutcome }> {
     const player = this.getPlayerName(playerId);
     const roomId = this.getCurrentRoom();
     
@@ -266,7 +342,14 @@ export class GameSession extends DurableObject<Env> {
         if (this.hasInventoryItem(hiddenName)) {
           return { success: false, message: `${hiddenName} is already in the shared inventory` };
         }
+        if (hidden.requiresFlag && !this.getFlags()[hidden.requiresFlag]) {
+          this.logAction(player, "take", hiddenName, `${player} tried to take ${hiddenName} but it is still secured`);
+          return { success: false, message: hidden.lockedMessage || "That is locked away" };
+        }
         this.addToInventory(hiddenName, player);
+        if (hiddenName === AUTHENTIC_DIAMOND) {
+          return this.takeAuthenticDiamond(player, hidden.takeMessage);
+        }
         this.logAction(player, "take", hiddenName, `${player} took the ${hiddenName}`);
         return { success: true, message: hidden.takeMessage, itemAdded: hiddenName };
       }
@@ -283,9 +366,28 @@ export class GameSession extends DurableObject<Env> {
         return { success: false, message: "You can't take that" };
       }
       
+      if (this.hasInventoryItem(itemName)) {
+        return { success: false, message: `${itemName} is already in the shared inventory` };
+      }
+      
       this.addToInventory(itemName, player);
+      if (itemName === PEDESTAL_DIAMOND) {
+        return this.takePedestalDiamond(player);
+      }
       this.logAction(player, "take", itemName, `${player} took ${itemName}`);
       return { success: true, message: `Added ${itemName} to shared inventory`, itemAdded: itemName };
+    }
+    
+    // Curator keycard on the steel shelves (room 5). Accepts either phrasing:
+    //   { itemName: 'curator-keycard', action: 'use'|'unlock'|'open', target: 'steel-shelves' }
+    //   { itemName: 'steel-shelves',   action: 'open'|'unlock'|'use'|'press' }
+    const shelvesTargeted = roomId === VAULT_ROOM
+      && ['use', 'unlock', 'open', 'press'].includes(action)
+      && (this.isShelves(target)
+        || (this.isShelves(itemName) && (!target || this.isShelves(target)))
+        || (itemName === CURATOR_KEYCARD && !target)); // only reader in the vault is on shelf 12
+    if (shelvesTargeted) {
+      return this.unlockShelves(player, itemName);
     }
     
     const exits = await this.getRoomExits(roomId);
@@ -352,6 +454,100 @@ export class GameSession extends DurableObject<Env> {
     return { success: false, message: "That action doesn't work here" };
   }
   
+  // ===== Finale Twist State Machine =====
+  //
+  //   [vault open] --take sunburst-diamond--> replica_taken (heistComplete: 'replica', apparent win)
+  //        |                                        |
+  //        +--examine sunburst-diamond (before or after)--> replica_identified (evidence surfaced)
+  //        |
+  //        +--use curator-keycard on steel-shelves--> shelves_unlocked
+  //                                                       |
+  //                                        take sunburst-diamond-authentic --> authentic_taken
+  //                                                       (heistComplete: 'authentic', true win)
+  //
+  // Taking the replica is never required; the keycard path can be run straight from the vault door.
+  
+  private takePedestalDiamond(player: string): { success: boolean; message: string; itemAdded: string; heistComplete: HeistOutcome } {
+    this.setFlag('replica_taken', true);
+    this.addSolvedPuzzle('pedestal-diamond-taken');
+    this.logAction(player, "take", PEDESTAL_DIAMOND, `${player} lifted the sunburst-diamond from the pedestal. Objective apparently secured.`);
+    const identified = this.getFlags().replica_identified;
+    return {
+      success: true,
+      itemAdded: PEDESTAL_DIAMOND,
+      heistComplete: this.getHeistOutcome(),
+      message: identified
+        ? "You lift the replica from its pillow anyway. Light, cold, and worthless, but useful: whoever comes for the pedestal after the gala will find exactly what they expected. The real stone is still on the steel-shelves."
+        : "The case sighs open and you lift the Sunburst Diamond from its velvet pillow. The LED goes dark. Objective secured, apparently. It sits lighter in your palm than 45 carats has any right to, and its fire is strangely uniform. Elena said to doubt the pedestal. Examine it before you call this done."
+    };
+  }
+  
+  private takeAuthenticDiamond(player: string, message: string): { success: boolean; message: string; itemAdded: string; heistComplete: HeistOutcome } {
+    this.setFlag('authentic_taken', true);
+    this.addSolvedPuzzle('heist-complete-authentic');
+    this.logAction(player, "take", AUTHENTIC_DIAMOND, `${player} secured the authentic Sunburst Diamond from the steel shelves. Heist complete.`);
+    const replicaNote = this.hasInventoryItem(PEDESTAL_DIAMOND)
+      ? " The replica in your pocket will keep Marcus believing his swap went to plan a little longer."
+      : " The replica still sits on the pedestal; Marcus's gala swap will hand him a lump of zirconia.";
+    return {
+      success: true,
+      itemAdded: AUTHENTIC_DIAMOND,
+      heistComplete: this.getHeistOutcome(),
+      message: `${message}${replicaNote} HEIST COMPLETE.`
+    };
+  }
+  
+  private unlockShelves(player: string, itemName: string): { success: boolean; message: string; doorUnlocked?: string } {
+    if (this.getFlags().shelves_unlocked) {
+      return { success: true, message: "Shelf 12's transit case is already open. Take the sunburst-diamond-authentic.", doorUnlocked: SHELVES };
+    }
+    if (itemName !== CURATOR_KEYCARD && !this.isShelves(itemName)) {
+      return { success: false, message: `The ${itemName} does nothing against a card reader. Shelf 12 wants a curator credential.` };
+    }
+    if (!this.hasInventoryItem(CURATOR_KEYCARD)) {
+      this.logAction(player, "unlock", SHELVES, `${player} tried the shelf 12 reader without a curator credential`);
+      return { success: false, message: "The reader on shelf 12 blinks red: CURATOR AUTHORIZATION REQUIRED. The maintenance locker in the Vault Access corridor had a keycard on a lanyard." };
+    }
+    this.setFlag('shelves_unlocked', true);
+    this.addSolvedPuzzle('steel-shelves-unlock');
+    this.logAction(player, "unlock", SHELVES, `${player} opened the shelf 12 transit case with the curator keycard`);
+    return {
+      success: true,
+      doorUnlocked: SHELVES,
+      message: "The reader chirps and turns green: BRIGHT, E. - CURATOR. The transit case on shelf 12 unlatches. Inside, on foam cut to its outline, a yellow diamond throws light in a dozen shades the pedestal stone never managed. Use use_item with action 'take' and itemName 'sunburst-diamond-authentic'."
+    };
+  }
+  
+  private isShelves(name?: string): boolean {
+    if (!name) return false;
+    const n = name.trim().toLowerCase();
+    return n === SHELVES || n === 'shelves' || n === 'shelf-12' || n === 'transit-case' || /shel(f|ves)/.test(n);
+  }
+  
+  /** Derived from inventory so it survives any flag drift: authentic beats replica. */
+  private getHeistOutcome(): HeistOutcome {
+    if (this.hasInventoryItem(AUTHENTIC_DIAMOND)) return 'authentic';
+    if (this.hasInventoryItem(PEDESTAL_DIAMOND)) return 'replica';
+    return false;
+  }
+  
+  private getFlags(): StoryFlags {
+    const result = this.ctx.storage.sql.exec<{ value: string }>(
+      "SELECT value FROM session_state WHERE key = 'story_flags'"
+    ).toArray()[0];
+    return result ? JSON.parse(result.value) : {};
+  }
+  
+  private setFlag(flag: keyof StoryFlags, value: boolean): void {
+    const flags = this.getFlags();
+    if (flags[flag] === value) return;
+    flags[flag] = value;
+    this.ctx.storage.sql.exec(
+      "INSERT OR REPLACE INTO session_state (key, value) VALUES ('story_flags', ?)",
+      JSON.stringify(flags)
+    );
+  }
+  
   async openDrawer(playerId: string, drawerId: string): Promise<{ success: boolean; contents?: string; message: string }> {
     const player = this.getPlayerName(playerId);
     
@@ -381,14 +577,26 @@ export class GameSession extends DurableObject<Env> {
     const player = this.getPlayerName(playerId);
     const roomId = this.getCurrentRoom();
     
-    // Special handling for catalog drawer
-    if (code === '7734' && target === 'card-catalog') {
+    // Catalog drawer 7734 (Archives). Target may be 'card-catalog', 'card-catalog-7734', 'catalog', or
+    // omitted while standing in the Archives. This is Elena's breadcrumb, not the vault code: the
+    // Examiner still has to assemble 3891 from the four room marks using the poster-board rule.
+    const catalogTargeted = target ? /catalog/i.test(target) : roomId === 3;
+    if (code === '7734' && catalogTargeted) {
       this.addSolvedPuzzle('card-catalog-7734');
-      this.logAction(player, "enter_code", "card-catalog-7734", "Unlocked catalog drawer 7734");
+      this.setFlag('elena_revealed', true);
+      this.logAction(player, "enter_code", "card-catalog-7734", "Unlocked catalog drawer 7734 and found Elena's note");
       return {
         success: true,
-        message: "The drawer slides open smoothly. Inside is a catalog card: 'Bronze sculpture, Florence, 1489. Vault exhibition code: 3891. This is the complete 4-digit code obtained by combining room digits 3-8-9-1.'",
-        unlocked: 'card-catalog-7734'
+        unlocked: 'card-catalog-7734',
+        message: [
+          "The drawer slides open. No catalog card. A folded note in the same neat hand as the visitor log:",
+          "",
+          "\"If you are reading this, you followed my breadcrumb. Good. The corridor cameras are dark; I muted them myself and logged it as maintenance. Marcus knows the keypad sequence. He has always known it, and he is counting on nobody else working it out before the gala.",
+          "You already hold every mark you need. The rooms give them up in order; the poster in the lobby told you how to read them. Do not let anyone hand you the number.",
+          "When you reach the vault: doubt the pedestal. Trust the painting. And whatever Marcus has moved to the shelves is what you are really here for. - E.\"",
+          "",
+          "Use open_drawer on 'card-catalog-7734' to see what else she left."
+        ].join("\n")
       };
     }
     
