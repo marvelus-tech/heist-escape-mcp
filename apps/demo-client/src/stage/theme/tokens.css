@@ -1,9 +1,16 @@
 /*
  * Heist Escape - Stage design tokens
  *
- * Visual thesis: light pearl / ivory surfaces, dark readable text, champagne gold
- * for success / LIVE / rewards, soft cyan for examine focus, soft magenta reserved
- * for the Watch role. Frosted glass panels with thin gold / cyan hairlines.
+ * Visual thesis: the QR lobby stays light pearl / ivory with dark ink. The live
+ * Stage HUD (VIS-C, locked concept still) is frosted DARK glass docked to the
+ * edges of the bright 3D room: semi-transparent night panels, warm ivory text,
+ * gold for brand / success / KEY ACQUIRED moments, ice cyan for examine focus,
+ * soft magenta reserved for the Watch role. Thin glowing hairlines, never fills.
+ *
+ * The `--he-night-*` / `--he-glass-dark-*` / `--he-on-dark-*` / `--he-ice-*`
+ * groups below are the dark-glass palette. StagePage remaps the generic
+ * surface / ink tokens onto them inside `.hud` and the juice root, so the
+ * shared `.he-glass` primitive flips to dark without any markup changes.
  *
  * Every token is prefixed `--he-` so page-local styles cannot collide with it.
  * Utility classes (`.he-*`) are shared chrome primitives that role pages may
@@ -60,6 +67,47 @@
   --he-glow-gold: 0 0 0 1px var(--he-hairline-gold), 0 0 24px rgba(201, 162, 74, 0.28);
   --he-glow-cyan: 0 0 0 1px var(--he-hairline-cyan), 0 0 24px rgba(79, 184, 208, 0.28);
   --he-glow-magenta: 0 0 0 1px var(--he-hairline-magenta), 0 0 24px rgba(217, 104, 159, 0.26);
+
+  /* ---------- Dark glass (live Stage HUD, concept still) ---------- */
+
+  /* Night surfaces: blue-black so gold reads warm and cyan reads cold. */
+  --he-night-900: #070a10;
+  --he-night-800: #0c121b;
+  --he-night-700: #141c28;
+  --he-night-600: #1e2837;
+
+  /* Glass fills. Opacity is tuned for the bright marble behind: at ~0.72 the
+     blended panel lands near #555, which keeps ivory text above 6:1. */
+  --he-glass-dark-bg: rgba(12, 18, 27, 0.72);
+  --he-glass-dark-bg-strong: rgba(12, 18, 27, 0.84);
+  --he-glass-dark-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0) 42%);
+  --he-glass-dark-shadow: 0 14px 36px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.09);
+  --he-glass-dark-shadow-soft: 0 8px 22px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+
+  /* Ivory text on dark glass */
+  --he-on-dark-900: #f6f1e6;
+  --he-on-dark-700: #ddd6c8;
+  --he-on-dark-500: #aaa396;
+  --he-on-dark-300: #756f65;
+
+  /* Ice cyan (the still's panel borders and clue-type labels) */
+  --he-ice-100: #dff7fc;
+  --he-ice-300: #a9ecf7;
+  --he-ice-500: #6fd6ea;
+  --he-ice-700: #2fb2cc;
+
+  /* Bright gold for text on dark (the mid golds vanish against night glass) */
+  --he-gold-on-dark: #f0d68c;
+  --he-gold-on-dark-deep: #d4b05a;
+
+  /* Dark-glass hairlines and glows */
+  --he-hairline-dark: rgba(255, 255, 255, 0.1);
+  --he-hairline-gold-dark: rgba(232, 200, 120, 0.62);
+  --he-hairline-ice: rgba(140, 222, 240, 0.62);
+  --he-hairline-magenta-dark: rgba(240, 182, 214, 0.5);
+  --he-glow-gold-dark: 0 0 0 1px var(--he-hairline-gold-dark), 0 0 22px rgba(232, 200, 120, 0.3);
+  --he-glow-ice: 0 0 0 1px var(--he-hairline-ice), 0 0 22px rgba(140, 222, 240, 0.32);
+  --he-glow-magenta-dark: 0 0 0 1px var(--he-hairline-magenta-dark), 0 0 22px rgba(240, 182, 214, 0.26);
 
   /* Radii */
   --he-r-xs: 6px;
@@ -120,6 +168,20 @@
 
 .he-glass--strong {
   background: var(--he-glass-bg-strong);
+}
+
+/*
+ * Dark glass. Either add the class directly, or (as StagePage does for the
+ * live HUD) remap the generic tokens on an ancestor so every nested .he-glass
+ * inherits the night palette. `background-image` keeps a faint top sheen so the
+ * panel reads as glass rather than a flat dark rectangle.
+ */
+.he-glass--dark {
+  background-color: var(--he-glass-dark-bg);
+  background-image: var(--he-glass-dark-sheen);
+  border-color: var(--he-hairline-dark);
+  box-shadow: var(--he-glass-dark-shadow);
+  color: var(--he-on-dark-900);
 }
 
 .he-hairline-gold { border-color: var(--he-hairline-gold); }
