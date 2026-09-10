@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { PALETTE } from './materials';
+import { PALETTE, makeGlow } from './materials';
 
 /**
  * Module VIS-B: "focus juice" for objects of interest.
@@ -26,6 +26,8 @@ export interface FocusStyle {
   softWidth: number;
   opacity: number;
   softOpacity: number;
+  /** Soft cyan sprite behind the object (off for big furniture, where it reads as haze). */
+  halo: boolean;
   /** Attach a gold particle cloud sized to the object. */
   particles: boolean;
 }
@@ -39,6 +41,7 @@ export const FOCUS_STYLE: FocusStyle = {
   softWidth: 0.055,
   opacity: 0.95,
   softOpacity: 0.32,
+  halo: true,
   particles: false,
 };
 
@@ -111,6 +114,16 @@ export function skipOutline<T extends THREE.Material>(material: T): T {
   return material;
 }
 
+/** Bounds of the solid geometry only: glow sprites and hulls would inflate the box several-fold. */
+function meshBounds(root: THREE.Object3D): THREE.Box3 {
+  const bounds = new THREE.Box3();
+  root.updateWorldMatrix(true, true);
+  root.traverse(child => {
+    if (isOutlineCandidate(child)) bounds.expandByObject(child);
+  });
+  return bounds.isEmpty() ? bounds.setFromObject(root) : bounds;
+}
+
 /**
  * Builds two hull copies (core + soft) of every mesh under `root`, parented
  * beside the source so they inherit its animation. Returns the created meshes
@@ -167,11 +180,11 @@ const PARTICLE_VERTEX = /* glsl */ `
   uniform float uPixelRatio;
   varying float vAlpha;
   void main() {
-    float half = uHeight * 0.5;
+    float halfHeight = uHeight * 0.5;
     // Slow rise with wrap-around; the ellipsoid envelope pinches the radius
     // toward the top and bottom so the cloud stays egg-shaped, not a tube.
-    float y = mod(aY + uTime * aSpeed * 0.12, uHeight) - half;
-    float t = y / half;
+    float y = mod(aY + uTime * aSpeed * 0.12, uHeight) - halfHeight;
+    float t = y / halfHeight;
     float envelope = sqrt(max(1.0 - t * t, 0.0));
     float r = aRadius * envelope;
     float angle = aAngle + uTime * aSpeed * 0.6;
@@ -186,15 +199,16 @@ const PARTICLE_VERTEX = /* glsl */ `
 
 const PARTICLE_FRAGMENT = /* glsl */ `
   uniform vec3 uColor;
+  uniform vec3 uEdgeColor;
   uniform float uOpacity;
   varying float vAlpha;
   void main() {
     float d = length(gl_PointCoord - 0.5) * 2.0;
     if (d > 1.0) discard;
-    float a = 1.0 - d;
-    a *= a;
-    // Hot near-white centre so the densest motes read as sparks, not dust.
-    vec3 color = mix(uColor, vec3(1.0, 0.97, 0.88), smoothstep(0.55, 0.0, d) * 0.65);
+    float a = smoothstep(1.0, 0.55, d);
+    // Deep amber rim around a bright gold core: the rim gives each mote a body
+    // against the pearl walls, the core reads as a spark over the dark desk.
+    vec3 color = mix(uColor, uEdgeColor, smoothstep(0.35, 1.0, d));
     gl_FragColor = vec4(color, a * vAlpha * uOpacity);
   }
 `;
@@ -206,11 +220,11 @@ const PARTICLE_FRAGMENT = /* glsl */ `
  */
 export function goldParticleCloud(options: Partial<ParticleCloudOptions> = {}): THREE.Points {
   const opts: ParticleCloudOptions = {
-    count: 700,
+    count: 900,
     radius: 0.55,
     height: 1.6,
-    color: 0xffcf6a,
-    size: 0.05,
+    color: 0xffd45c,
+    size: 0.045,
     opacity: 0.9,
     ...options,
   };
@@ -250,11 +264,13 @@ export function goldParticleCloud(options: Partial<ParticleCloudOptions> = {}): 
       uHeight: { value: opts.height },
       uPixelRatio: { value: Math.min(typeof window !== 'undefined' ? window.devicePixelRatio : 1, 2) },
       uColor: { value: new THREE.Color(opts.color) },
+      uEdgeColor: { value: new THREE.Color(0xc98a2a) },
       uOpacity: { value: opts.opacity },
     },
     transparent: true,
     depthWrite: false,
-    blending: THREE.AdditiveBlending,
+    // Normal (not additive) blending: additive gold on a pearl room saturates to invisible.
+    blending: THREE.NormalBlending,
   });
   material.name = 'gold-particles';
   const points = new THREE.Points(geometry, material);
@@ -269,6 +285,7 @@ interface FocusEntry {
   core: THREE.ShaderMaterial;
   soft: THREE.ShaderMaterial;
   particles: THREE.Points | null;
+  halo: THREE.Sprite | null;
   phase: number;
   pulseStart: number | null;
   pulseDuration: number;
@@ -290,23 +307,32 @@ export class FocusFx {
     const resolved: FocusStyle = { ...FOCUS_STYLE, ...style };
     const { hulls, core, soft } = createFocusOutline(root, resolved);
 
+    const bounds = meshBounds(root);
+    const size = bounds.getSize(new THREE.Vector3());
+    // Local-space centre so effects follow the object's bob/spin.
+    const centre = root.worldToLocal(bounds.getCenter(new THREE.Vector3()));
+
+    let halo: THREE.Sprite | null = null;
+    if (resolved.halo) {
+      halo = makeGlow(resolved.softColor, Math.min(Math.max(size.x, size.y, size.z) * 1.6 + 0.4, 3), 0.18);
+      halo.name = 'focus-halo';
+      halo.position.copy(centre);
+      root.add(halo);
+    }
+
     let particles: THREE.Points | null = null;
     if (resolved.particles) {
-      root.updateWorldMatrix(true, true);
-      const bounds = new THREE.Box3().setFromObject(root);
-      const size = bounds.getSize(new THREE.Vector3());
       particles = goldParticleCloud({
         radius: Math.max(size.x, size.z) * 0.9 + 0.2,
         height: size.y * 1.8 + 0.6,
       });
-      // Local-space centre so the cloud follows the object's bob/spin.
-      particles.position.copy(root.worldToLocal(bounds.getCenter(new THREE.Vector3())));
+      particles.position.copy(centre);
       particles.position.y -= size.y * 0.25;
       root.add(particles);
     }
 
     this.entries.set(root, {
-      root, hulls, core, soft, particles,
+      root, hulls, core, soft, particles, halo,
       phase: Math.random() * Math.PI * 2,
       pulseStart: null,
       pulseDuration: 1400,
@@ -323,6 +349,10 @@ export class FocusFx {
       entry.particles.removeFromParent();
       entry.particles.geometry.dispose();
       (entry.particles.material as THREE.Material).dispose();
+    }
+    if (entry.halo) {
+      entry.halo.removeFromParent();
+      entry.halo.material.dispose();
     }
     this.entries.delete(root);
   }
@@ -363,6 +393,9 @@ export class FocusFx {
       const gain = 1 + breathe * 0.12 + boost;
       entry.core.uniforms.uOpacity.value = Math.min((entry.core.userData.baseOpacity as number) * gain, 1);
       entry.soft.uniforms.uOpacity.value = (entry.soft.userData.baseOpacity as number) * gain;
+      if (entry.halo) {
+        (entry.halo.material as THREE.SpriteMaterial).opacity = (entry.halo.userData.baseOpacity as number) * gain;
+      }
       if (entry.particles && !reducedMotion) {
         (entry.particles.material as THREE.ShaderMaterial).uniforms.uTime.value = seconds;
       }

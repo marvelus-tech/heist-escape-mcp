@@ -66,12 +66,19 @@ const EXAMINE_DURATION_MS = 1400;
 
 /** Name Stage can use to focus/pulse the floating lobby key (it is an accent, not a server object). */
 export const LOBBY_KEY_NAME = 'gallery-a-key';
-/** Lobby heroes from the locked still: outlined vase + key in its gold mote cloud. */
-const LOBBY_DEFAULT_FOCUS = ['flower-arrangement', LOBBY_KEY_NAME];
+/** Lobby heroes from the locked still: outlined desk + vase, key in its gold mote cloud. */
+const LOBBY_DEFAULT_FOCUS = ['reception-desk', 'flower-arrangement', LOBBY_KEY_NAME];
+/** Per-object tweaks on top of FOCUS_STYLE (thin lines on the lily cluster, no haze on furniture). */
+const FOCUS_PRESETS: Record<string, Partial<FocusStyle>> = {
+  [LOBBY_KEY_NAME]: { particles: true },
+  'flower-arrangement': { width: 0.012, softWidth: 0.035, softOpacity: 0.22 },
+  'reception-desk': { halo: false, softOpacity: 0.2 },
+};
 const KEY_BOB_PERIOD_MS = 3200;
 const KEY_BOB_AMPLITUDE = 0.06;
 /** Desk sits forward of the rotunda centre so it fills the lower third from the Stage camera (0, 3, 8). */
-const LOBBY_DESK = new THREE.Vector3(0, 0, 1.6);
+const LOBBY_DESK = new THREE.Vector3(0, 0, 2.4);
+const LOBBY_DESK_WIDTH = 3.4;
 
 /**
  * Scene Manager for Heist Escape (Module B: scene art direction)
@@ -441,9 +448,9 @@ export class SceneManager {
       // Lobby hero composition (locked still): desk in the foreground, vase on
       // the right, log on the left, key floating above (see addLobbyKey).
       'reception-desk': LOBBY_DESK.clone(),
-      'visitor-log': LOBBY_DESK.clone().add(new THREE.Vector3(-1.05, DESK_TOP_Y + 0.03, 0.15)),
+      'visitor-log': LOBBY_DESK.clone().add(new THREE.Vector3(-1.15, DESK_TOP_Y + 0.03, 0.15)),
       'poster-board': new THREE.Vector3(-6, 2, -9.5),
-      'flower-arrangement': LOBBY_DESK.clone().add(new THREE.Vector3(0.85, DESK_TOP_Y, -0.15)),
+      'flower-arrangement': LOBBY_DESK.clone().add(new THREE.Vector3(0.95, DESK_TOP_Y, -0.15)),
 
       'display-case-west': new THREE.Vector3(-4, 0, 2),
       'archives-door': new THREE.Vector3(0, 1.3, -9.5),
@@ -472,7 +479,7 @@ export class SceneManager {
     if (name.includes('lamp')) return this.createLamp();
     if (name.includes('rope')) return this.createVelvetRope();
     if (name.includes('shelves')) return this.createSteelShelves();
-    if (name.includes('desk')) return receptionDesk();
+    if (name.includes('desk')) return receptionDesk(LOBBY_DESK_WIDTH, 1.25);
     if (name.includes('door')) return this.createDoor();
     if (name.includes('display-case')) return displayCase(1.5, 1.2, 1.0, 'sphere');
     if (name.includes('cabinet') || name.includes('locker')) return this.createCabinet();
@@ -813,13 +820,15 @@ export class SceneManager {
       .map(object => this.resolveObject(object))
       .filter((root): root is THREE.Object3D => root !== undefined);
     this.focusFx.set([]);
-    this.interactables.forEach(entry => { entry.outline.visible = true; });
+    this.interactables.forEach(entry => { entry.outline.visible = true; entry.halo.visible = true; });
     for (const root of roots) {
-      const isKey = root.name === LOBBY_KEY_NAME;
-      this.focusFx.add(root, { particles: isKey, ...style });
-      // The generic 1.03-scale hull would double the line; the sharp focus hull replaces it.
+      this.focusFx.add(root, { ...FOCUS_PRESETS[root.name], ...style });
+      // The generic hull would double the line and its halo hazes the focus halo; hide both while focused.
       const generic = this.interactables.get(root);
-      if (generic) generic.outline.visible = false;
+      if (generic) {
+        generic.outline.visible = false;
+        generic.halo.visible = false;
+      }
     }
   }
 

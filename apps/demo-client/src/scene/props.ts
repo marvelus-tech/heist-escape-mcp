@@ -507,9 +507,13 @@ function getWoodTexture(): THREE.CanvasTexture {
   return woodTexture;
 }
 
-/** Polished dark walnut: the shared mahogany factory, deepened and grained (palette untouched). */
+/**
+ * Polished dark walnut: the shared mahogany factory, deepened and grained
+ * (palette untouched). Emissive is locked: the generic cyan interactable tint
+ * turns dark wood teal, and the brief wants wood; focus outlines carry the cue.
+ */
 function darkWood(repeatX = 2, repeatY = 1): THREE.MeshStandardMaterial {
-  const wood = materials.mahogany();
+  const wood = lockEmissive(materials.mahogany());
   wood.color.multiplyScalar(0.7);
   const map = getWoodTexture().clone();
   map.repeat.set(repeatX, repeatY);
@@ -637,7 +641,7 @@ export function receptionDesk(width = 3.2, depth = 1.2): THREE.Group {
   group.add(plinth, body, top, lip);
 
   // Leather inset with gold border.
-  const leather = skipOutline(new THREE.MeshStandardMaterial({ color: 0x18231f, roughness: 0.55, metalness: 0 }));
+  const leather = lockEmissive(skipOutline(new THREE.MeshStandardMaterial({ color: 0x18231f, roughness: 0.55, metalness: 0 })));
   const insetW = width - 1.0;
   const insetD = depth - 0.5;
   const inset = box(insetW, 0.012, insetD, leather, false);
@@ -740,8 +744,11 @@ function lily(petal: THREE.Material, gold: THREE.Material, tip: THREE.Material):
 export function crystalVase(): THREE.Group {
   const group = new THREE.Group();
 
-  const crystal = materials.glass();
+  // Faint fixed ice emissive instead of the generic cyan tint, so the body stays crystal.
+  const crystal = lockEmissive(materials.glass());
   crystal.color.setHex(0xe6f7ff);
+  crystal.emissive.setHex(0x9fe9ff);
+  crystal.emissiveIntensity = 0.05;
   crystal.opacity = 0.5;
   crystal.roughness = 0.02;
   crystal.envMapIntensity = 2.4;
@@ -763,17 +770,18 @@ export function crystalVase(): THREE.Group {
   );
   group.add(facets);
 
-  const gold = lockEmissive(materials.gold());
+  // Stems/leaves stay pure gold: no tint, no hull (hulled stems read as cyan tubes).
+  const gold = lockEmissive(skipOutline(materials.gold()));
   gold.emissive.setHex(PALETTE.gold);
   gold.emissiveIntensity = 0.1;
   const tip = lockEmissive(skipOutline(materials.gold()));
   tip.emissive.setHex(0xffd27a);
   tip.emissiveIntensity = 0.5;
-  // Petals stay unlocked: the interactable cyan tint gives them the icy edge from the still.
-  const petal = new THREE.MeshStandardMaterial({
+  // Petals: opaque ice-white with a whisper of fixed cyan; the focus hull draws the neon edge.
+  const petal = lockEmissive(new THREE.MeshStandardMaterial({
     color: 0xffffff, roughness: 0.18, metalness: 0, envMapIntensity: 1.5,
-    transparent: true, opacity: 0.92, side: THREE.DoubleSide,
-  });
+    emissive: 0x9fe9ff, emissiveIntensity: 0.06, side: THREE.DoubleSide,
+  }));
 
   const stemBase = new THREE.Vector3(0, 0.05, 0);
   const blooms: Array<[number, number, number, number, number, number]> = [
