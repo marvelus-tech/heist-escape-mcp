@@ -7,24 +7,16 @@
  * - Live stage: full-bleed three.js scene with an edge-docked frosted HUD
  *   (top bar, left action ticker, right role status, bottom inventory strip).
  *
- * Module A scope: layout, structure and CSS only. Scene materials (Module B)
- * and celebration / toast systems (Module C) are owned elsewhere.
+ * Module A owns layout, structure and CSS. Scene materials are Module B
+ * (scene-manager). Toasts, examine card, ticker emphasis and the climax ribbon
+ * are Module C (../juice), mounted into the scene container and fed from the
+ * polling loop below; StagePage only maps juice events onto GameFeel.
  */
 
 import * as THREE from 'three';
 import { SceneManager } from '../../scene-manager';
 import { GameFeel } from '../../game-feel';
-
-interface InventoryItem {
-  item: string;
-  takenBy: string;
-}
-
-interface ActionLogEntry {
-  player: string;
-  result: string;
-  timestamp: string;
-}
+import { StageJuice, type JuiceEvent, type ActionLogEntry, type InventoryItem } from '../juice';
 
 interface SessionPlayer {
   player_id: string;
@@ -85,13 +77,13 @@ export class StagePage {
   private renderer: THREE.WebGLRenderer | null = null;
   private sceneManager: SceneManager | null = null;
   private gameFeel: GameFeel | null = null;
+  private juice: StageJuice | null = null;
   private animationFrameId: number | null = null;
   private lastFrameTime = 0;
   private resizeHandler = () => this.handleResize();
 
   // Polling
   private pollingInterval: number | null = null;
-  private lastInventoryCount = 0;
   // Serialized last payloads so unchanged polls do not re-render (and replay
   // entry animations on) the ticker / inventory strip.
   private lastActionsKey = '';
@@ -427,6 +419,11 @@ export class StagePage {
     this.sceneManager = new SceneManager(this.scene);
     this.gameFeel = new GameFeel(this.camera, this.scene);
 
+    // Module C overlays live inside the scene container so they never fight the
+    // HUD grid; placement tokens keep them out of the edge-docked panels.
+    this.juice = StageJuice.mount(container, { onEvent: (e) => this.onJuiceEvent(e) });
+    this.juice.attachTicker(document.getElementById('action-list'));
+
     this.buildDemoRoom();
 
     window.addEventListener('resize', this.resizeHandler);
@@ -493,6 +490,8 @@ export class StagePage {
     }
     window.removeEventListener('resize', this.resizeHandler);
     this.gameFeel?.dispose();
+    this.juice?.destroy();
+    this.juice = null;
     this.renderer?.dispose();
     this.gameFeel = null;
     this.renderer = null;
@@ -541,11 +540,36 @@ export class StagePage {
   private endSession() {
     this.teardownScene();
     this.stopPolling();
-    this.lastInventoryCount = 0;
     this.lastActionsKey = '';
     this.lastInventoryKey = '';
     this.sessionId = null;
     this.render();
+  }
+
+  /** Map juice events to GameFeel (camera shake, particles, stingers). */
+  private onJuiceEvent(event: JuiceEvent) {
+    if (!this.gameFeel) return;
+    switch (event.kind) {
+      case 'item-acquired':
+      case 'prize-taken':
+        this.gameFeel.juice('MEDIUM', new THREE.Vector3(0, 1.5, 2), 'pickup');
+        break;
+      case 'reveal':
+      case 'replica-warning':
+        this.gameFeel.juice('SMALL', new THREE.Vector3(0, 1.5, 0), 'click');
+        break;
+      case 'door-unlocked':
+      case 'code-accepted':
+        this.gameFeel.juice('LARGE', new THREE.Vector3(0, 2, 0), 'unlock');
+        break;
+      case 'vault-open':
+      case 'heist-complete':
+        this.gameFeel.juice('LARGE', new THREE.Vector3(0, 1.5, -2), 'success');
+        break;
+      case 'code-rejected':
+        this.gameFeel.juice('SMALL', undefined, 'click');
+        break;
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -580,6 +604,10 @@ export class StagePage {
     const actionList = document.getElementById('action-list');
     if (!actionList || !data.actions) return;
 
+    // Juice diffs rows against what it has already seen (and seeds on the first
+    // call), so feeding it every poll is safe and never replays history.
+    this.juice?.onActions(data.actions);
+
     const key = JSON.stringify(data.actions);
     if (key === this.lastActionsKey) return;
     this.lastActionsKey = key;
@@ -591,18 +619,6 @@ export class StagePage {
 
     actionList.innerHTML = data.actions.slice(-8).reverse().map((action: ActionLogEntry) => {
       const result = action.result.toLowerCase();
-
-      if (result.includes('unlocked') || result.includes('door opens')) {
-        setTimeout(() => {
-          this.gameFeel?.juice('LARGE', new THREE.Vector3(0, 2, 0), 'unlock');
-        }, 50);
-      }
-
-      if (result.includes('correct') || result.includes('vault') || result.includes('success')) {
-        setTimeout(() => {
-          this.gameFeel?.juice('LARGE', new THREE.Vector3(0, 1.5, -2), 'success');
-        }, 50);
-      }
 
       return `
         <div class="tick-item tick-item--${this.actionKind(result)}">
@@ -629,7 +645,7 @@ export class StagePage {
     return 'activity';
   }
 
-  private formatTime(timestamp: string): string {
+  private formatTime(timestamp: string | number): string {
     const date = new Date(timestamp);
     if (Number.isNaN(date.getTime())) return esc(timestamp);
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
@@ -646,11 +662,7 @@ export class StagePage {
     const inventoryList = document.getElementById('inventory-list');
     if (!inventoryList || !data.items) return;
 
-    if (data.items.length > this.lastInventoryCount) {
-      this.gameFeel?.juice('MEDIUM', new THREE.Vector3(0, 1.5, 2), 'pickup');
-      this.showInventoryToast(data.items[data.items.length - 1]);
-    }
-    this.lastInventoryCount = data.items.length;
+    this.juice?.onInventory(data.items);
 
     const count = document.getElementById('inventory-count');
     if (count) count.textContent = String(data.items.length);
@@ -681,7 +693,7 @@ export class StagePage {
     return (words[0][0] + words[1][0]).toUpperCase();
   }
 
-  /** Lights up role chips from the session's player list. */
+  /** Lights up role chips from the session's player list; feeds the climax ribbon. */
   private async pollState() {
     const res = await fetch(`${this.apiBase}/api/get_state`, {
       method: 'POST',
@@ -689,6 +701,12 @@ export class StagePage {
       body: JSON.stringify({ sessionId: this.sessionId })
     });
     const data = await res.json();
+    if (!data || data.error) return;
+
+    // heistComplete ('replica' | 'authentic' | false) + unlockedDoors drive the
+    // ribbon from state, so a mid-heist reload still shows it.
+    this.juice?.onState(data);
+
     if (!data.players) return;
 
     const players = data.players as SessionPlayer[];
@@ -705,26 +723,6 @@ export class StagePage {
         sub.textContent = ROLES[role].subtitle;
       }
     });
-  }
-
-  private showInventoryToast(item: InventoryItem) {
-    const toast = document.createElement('div');
-    toast.className = 'inventory-toast he-glass he-hairline-gold';
-    toast.innerHTML = `
-      <div class="toast-icon">${icon('sparkle')}</div>
-      <div class="toast-content">
-        <div class="toast-title he-eyebrow">Item secured</div>
-        <div class="toast-item">${esc(item.item)}</div>
-        <div class="toast-by">by ${esc(item.takenBy)}</div>
-      </div>
-    `;
-
-    document.body.appendChild(toast);
-    setTimeout(() => toast.classList.add('show'), 10);
-    setTimeout(() => {
-      toast.classList.remove('show');
-      setTimeout(() => toast.remove(), 300);
-    }, 3000);
   }
 
   // ---------------------------------------------------------------------------
@@ -1671,27 +1669,25 @@ const STAGE_CSS = `
     padding: var(--he-s-4);
   }
 
-  /* Inventory toast (legacy behavior, restyled with tokens) */
+  /* Module C overlays (juice.css) mount inside .scene-container. Map their
+     placement tokens onto the HUD grid so toasts sit below the top bar, the
+     examine card clears the ticker column and the ribbon rides above the
+     inventory strip. Palette tokens are pointed at the shared theme. */
 
-  .inventory-toast {
-    position: fixed;
-    top: calc(var(--he-hud-top-h) + var(--he-hud-gap) * 2);
-    right: calc(var(--he-hud-side-w) + var(--he-hud-gap) * 2);
-    display: flex;
-    align-items: center;
-    gap: var(--he-s-3);
-    padding: var(--he-s-3) var(--he-s-4);
-    min-width: 240px;
-    z-index: 30;
-    opacity: 0;
-    transform: translateY(-8px);
-    transition: opacity var(--he-dur) var(--he-ease), transform var(--he-dur) var(--he-ease);
+  .scene-container.hj-root {
+    --hj-ink: var(--he-ink-900);
+    --hj-muted: var(--he-ink-500);
+    --hj-pearl: var(--he-glass-bg-strong);
+    --hj-gold: var(--he-gold-500);
+    --hj-gold-deep: var(--he-gold-700);
+    --hj-gold-light: var(--he-gold-200);
+    --hj-cyan: var(--he-cyan-500);
+    --hj-cyan-deep: var(--he-cyan-700);
+    --hj-toast-top: calc(var(--he-hud-top-h) + var(--he-hud-gap) * 2);
+    --hj-examine-left: calc(var(--he-hud-side-w) + var(--he-hud-gap) * 2);
+    --hj-examine-top: calc(var(--he-hud-top-h) + var(--he-hud-gap) * 2);
+    --hj-ribbon-bottom: calc(var(--he-hud-bottom-h) + var(--he-hud-gap) * 2);
   }
-
-  .inventory-toast.show { opacity: 1; transform: translateY(0); }
-  .toast-icon { color: var(--he-gold-700); font-size: 1.4rem; display: grid; place-items: center; }
-  .toast-item { font-weight: 700; color: var(--he-ink-900); }
-  .toast-by { font-size: 0.72rem; color: var(--he-ink-500); }
 
   /* ---------- Reduced motion ---------- */
 
@@ -1751,7 +1747,11 @@ const STAGE_CSS = `
     .hud-qr { display: none; }
     .inv-summary { padding: 0 var(--he-s-3); }
 
-    .inventory-toast { right: var(--he-hud-gap); left: var(--he-hud-gap); min-width: 0; }
+    /* Ticker spans the full width on narrow screens; drop the examine card below it. */
+    .scene-container.hj-root {
+      --hj-examine-left: var(--he-hud-gap);
+      --hj-examine-top: calc(var(--he-hud-top-h) + 42vh + var(--he-hud-gap) * 3);
+    }
 
     .lobby-mode { display: none; }
     .lobby-top .session-chip { margin-left: auto; }
