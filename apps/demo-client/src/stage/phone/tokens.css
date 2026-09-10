@@ -1,0 +1,82 @@
+/*
+ * Heist Escape - Phone UI kit tokens
+ *
+ * The Stage tokens (src/stage/theme/tokens.css) are tuned for a light pearl
+ * projector view. Phones sit in a dark room, held close to the face, so the
+ * companion kit inverts to dark frosted glass while keeping the same champagne
+ * gold / soft cyan accents from the Stage concept art.
+ *
+ * Every phone token is prefixed `--hp-` and scoped to `.hp-layer` so nothing
+ * leaks into the role pages that still carry their own prototype CSS. Where a
+ * Stage `--he-*` token exists we reuse it (with a literal fallback so the kit
+ * also renders when theme/tokens.css is not loaded, e.g. in the story page).
+ */
+
+.hp-layer {
+  /* Dark glass surfaces */
+  --hp-ink-0: #0b0e13;
+  --hp-ink-1: #12161e;
+  --hp-glass: rgba(18, 22, 30, 0.8);
+  --hp-glass-strong: rgba(14, 17, 24, 0.94);
+  --hp-glass-blur: var(--he-glass-blur, 18px);
+  --hp-scrim: rgba(6, 8, 12, 0.64);
+  --hp-shadow: 0 -12px 40px rgba(0, 0, 0, 0.45), 0 1px 0 rgba(255, 255, 255, 0.04) inset;
+  --hp-shadow-toast: 0 10px 28px rgba(0, 0, 0, 0.45);
+
+  /* Text on dark glass (warm ivory, never pure white) */
+  --hp-text: #f3eee2;
+  --hp-text-muted: rgba(243, 238, 226, 0.68);
+  --hp-text-faint: rgba(243, 238, 226, 0.42);
+
+  /* Accents: reuse Stage hues */
+  --hp-gold: var(--he-gold-500, #c9a24a);
+  --hp-gold-hi: var(--he-gold-200, #f0dfae);
+  --hp-gold-deep: var(--he-gold-700, #9c7a2b);
+  --hp-cyan: var(--he-cyan-500, #4fb8d0);
+  --hp-cyan-hi: var(--he-cyan-300, #a6e0ec);
+  --hp-danger: #e58a86;
+  --hp-danger-hi: #f5c2bf;
+
+  /* Hairlines and glows on dark glass need more alpha than on pearl */
+  --hp-hairline-soft: rgba(243, 238, 226, 0.1);
+  --hp-hairline-gold: rgba(230, 201, 130, 0.55);
+  --hp-hairline-cyan: rgba(166, 224, 236, 0.5);
+  --hp-hairline-danger: rgba(229, 138, 134, 0.5);
+  --hp-glow-gold: 0 0 0 1px var(--hp-hairline-gold), 0 0 28px rgba(201, 162, 74, 0.28);
+  --hp-glow-cyan: 0 0 0 1px var(--hp-hairline-cyan), 0 0 28px rgba(79, 184, 208, 0.28);
+
+  /* Phone density: bigger tap targets, larger body copy, tighter chrome */
+  --hp-tap: 48px;
+  --hp-r: var(--he-r-lg, 24px);
+  --hp-r-sm: var(--he-r-sm, 10px);
+  --hp-r-pill: var(--he-r-pill, 999px);
+  --hp-s-1: var(--he-s-1, 4px);
+  --hp-s-2: var(--he-s-2, 8px);
+  --hp-s-3: var(--he-s-3, 12px);
+  --hp-s-4: var(--he-s-4, 16px);
+  --hp-s-5: var(--he-s-5, 24px);
+  --hp-font-display: var(--he-font-display, 'Cinzel', Georgia, serif);
+  --hp-font-ui: var(--he-font-ui, 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif);
+  --hp-fs-body: 1.0625rem; /* 17px: comfortable for long Elena notes */
+  --hp-lh-body: 1.55;
+  --hp-fs-title: 1.25rem;
+  --hp-fs-eyebrow: 0.7rem;
+  --hp-track-caps: var(--he-track-caps, 0.14em);
+
+  /* Motion: inherits the Stage durations, which collapse to 0ms under
+     prefers-reduced-motion (see theme/tokens.css). */
+  --hp-ease: var(--he-ease, cubic-bezier(0.22, 0.61, 0.36, 1));
+  --hp-dur: var(--he-dur, 280ms);
+  --hp-dur-fast: var(--he-dur-fast, 160ms);
+
+  /* Notch / home-indicator insets */
+  --hp-safe-top: env(safe-area-inset-top, 0px);
+  --hp-safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hp-layer {
+    --hp-dur: 0ms;
+    --hp-dur-fast: 0ms;
+  }
+}
