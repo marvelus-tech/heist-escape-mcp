@@ -1,6 +1,144 @@
 import { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
-import type { Env } from "./types";
+import type { Env, BriefingAudience } from "./types";
+
+// ===== Dual Briefing =====
+//
+// Operator / watch (and anyone unspecified) get the COVER story: a sanctioned red-team run before the
+// "Diamonds Through the Ages" gala. The Examiner (or classified=true) gets the TRUE mission from Elena.
+// Roles are soft: nothing here blocks any tool; it only changes what the briefing says.
+
+export interface BriefingRequest {
+  sessionId: string;
+  playerId?: string;
+  role?: string;
+  classified?: boolean;
+}
+
+export interface Briefing {
+  audience: BriefingAudience;
+  classified: boolean;
+  text: string;
+}
+
+/** Normalise a free-text role into a briefing audience. Unknown roles default to the cover story. */
+export function toAudience(role?: string | null): BriefingAudience {
+  const r = (role || '').trim().toLowerCase();
+  if (r === 'examiner' || r === 'agent' || r === 'analyst') return 'examiner';
+  if (r === 'watch' || r === 'spectator' || r === 'stage' || r === 'audience') return 'watch';
+  return 'operator';
+}
+
+/**
+ * Resolve which briefing a caller should see. Explicit `role` wins, then the role the player joined
+ * with, then the cover story. `classified: true` forces the true mission regardless of role.
+ */
+export async function resolveBriefing(env: Env, req: BriefingRequest): Promise<Briefing> {
+  let role = req.role;
+  if (!role && req.playerId) {
+    const stub = env.GAME_SESSION.get(env.GAME_SESSION.idFromName(req.sessionId));
+    role = await stub.getPlayerRole(req.playerId);
+  }
+  const audience = toAudience(role);
+  const classified = req.classified === true || audience === 'examiner';
+  return {
+    audience,
+    classified,
+    text: classified ? classifiedBriefing(req.sessionId, audience) : coverBriefing(req.sessionId, audience)
+  };
+}
+
+const TOOL_LIST = `## Available Tools
+- \`look_around\` - Survey current room
+- \`examine_object\` - Inspect objects for clues and hidden items
+- \`use_item\` - Take items, unlock/open doors, use a key or keycard on something
+- \`open_drawer\` / \`enter_code\` - Drawers and keypads
+- \`get_inventory\` / \`get_state\` - Shared team state
+- \`get_hints\` - Progressive hints if stuck
+- \`get_recent_actions\` - See what your partner has done`;
+
+function coverBriefing(sessionId: string, audience: BriefingAudience): string {
+  const roleLine = audience === 'watch'
+    ? '**Your Role**: Observer (watch feed)'
+    : '**Your Role**: Operator (hands)';
+  return `# Bright Museum Trust - Red-Team Engagement Brief
+
+**Session ID**: ${sessionId}
+${roleLine}
+**Classification**: Cover / unclassified
+
+## Engagement
+The Bright Museum Trust has contracted your team for an authorised physical security audit ahead of the
+**Diamonds Through the Ages** gala. Management wants proof that the vault can be reached before the
+press does. Curator Dr. Elena Bright signed the engagement letter. You have a window of one closed morning.
+
+## Objective
+Move from the Lobby to the Vault and demonstrate that the **Sunburst Diamond** on the pedestal could be
+lifted. Log every control that fails along the way. Leave the building as you found it.
+
+## The Building (5 rooms)
+1. **Museum Lobby** - reception desk, visitor log, a key somewhere handy
+2. **Gallery A** - Renaissance wing, Archives door
+3. **Archives** - card catalog, filing cabinets, a large seascape
+4. **Vault Access Corridor** - keypad door, blueprint, maintenance locker
+5. **The Vault** - pedestal, steel shelves, environmental controls
+
+## Assembly Rule
+Staff hid one keypad digit in each of rooms 1 to 4 for the audit. **Combine them in ORDER BY ROOM NUMBER.**
+
+## Working with your partner
+The Examiner reads and analyses; you open, enter, take and move. Neither role can finish alone, and
+nothing stops you from examining things yourself if you are curious. Share what you find.
+
+${TOOL_LIST}
+
+---
+*Start with \`look_around\`. The client is watching the clock.*`;
+}
+
+function classifiedBriefing(sessionId: string, audience: BriefingAudience): string {
+  return `# EYES ONLY - Sunburst Recovery
+
+**Session ID**: ${sessionId}
+**Your Role**: Examiner (${audience === 'examiner' ? 'primary' : 'cleared'})
+**Classification**: Classified. The Operator has been given the red-team cover story. Keep it that way
+unless you decide they need to know.
+
+## What is actually happening
+Dr. Elena Bright, curator, hired you off the books. She believes **Marcus** (the "M" who signs her
+gifts, and the man who controls vault security) plans to **swap the Sunburst Diamond for a replica during
+the gala** and walk the real stone out through secure storage. She could not go to the board; Marcus sits
+on it. So she built you a path instead.
+
+## What Elena has done for you
+- Muted the corridor cameras and logged it as maintenance.
+- Left a breadcrumb in the visitor log (a catalog number) that leads to a note in the Archives.
+- Left her curator keycard where a curator would never leave it.
+
+## Your real objectives
+1. Reach the vault. The keypad code is not written down anywhere as a whole; assemble it from the
+   four room marks using the lobby's assembly rule. Marcus already knows the sequence; you must earn it.
+2. **Verify authenticity.** The stone on the pedestal may be a decoy. Examine it before you trust it.
+3. If it is a replica, find where the authentic stone has been staged. Elena's note will point you at
+   the **steel shelves**. Her keycard opens what Marcus locked.
+4. Secure the **authentic** Sunburst Diamond. Taking the pedestal stone alone reads as success to
+   everyone watching, and that is exactly what Marcus is counting on.
+
+## Win condition
+\`get_state\` reports \`heistComplete: "authentic"\`. \`"replica"\` means you have been played.
+
+## Elena's words
+*"Doubt the pedestal. Trust the painting."*
+
+## Working with your Operator
+They see the cover story. You can ask them to open drawers, enter codes and take items without telling
+them why. Or tell them. Your call.
+
+${TOOL_LIST}
+
+---
+*Start with \`look_around\`. Read everything. Nobody is going to hand you the number.*`;
+}
 
 /**
  * MCP Server Factory
@@ -40,7 +178,7 @@ export function createHeistMcpServer(env: Env): McpServer {
       inputSchema: z.object({
         sessionId: z.string().describe("Session ID to join (e.g., 'heist-alpha')"),
         playerName: z.string().describe("Your player name"),
-        role: z.string().optional().describe("Optional role: 'examiner' or 'operator'")
+        role: z.string().optional().describe("Optional role: 'examiner', 'operator' or 'watch' (decides which briefing you see)")
       })
     },
     async ({ sessionId, playerName, role }) => {
@@ -160,6 +298,12 @@ export function createHeistMcpServer(env: Env): McpServer {
         text += `\n\n📍 Moved to room ${result.roomChanged}. Use look_around to survey the new area.`;
       }
       
+      if (result.heistComplete === 'authentic') {
+        text += `\n\n💎 **HEIST COMPLETE.** The authentic Sunburst Diamond is secured.`;
+      } else if (result.heistComplete === 'replica') {
+        text += `\n\n💎 **Objective secured?** Something about this stone is off. Examine it.`;
+      }
+      
       return textResult(text);
     }
   );
@@ -254,92 +398,22 @@ export function createHeistMcpServer(env: Env): McpServer {
     }
   );
   
-  // ===== Agent Briefing =====
+  // ===== Agent Briefing (dual) =====
   
   server.registerTool(
     "get_briefing",
     {
-      description: "Read the mission briefing for the Examiner agent.",
+      description: "Read the mission briefing. Operators/watchers get the red-team cover story; the Examiner (or classified=true) gets the true mission.",
       inputSchema: z.object({
-        sessionId: z.string().describe("Session ID")
+        sessionId: z.string().describe("Session ID"),
+        playerId: z.string().optional().describe("Your player ID/name; used to look up the role you joined with"),
+        role: z.string().optional().describe("Override role: 'examiner' | 'operator' | 'watch'"),
+        classified: z.boolean().optional().describe("Force the classified (true mission) briefing")
       })
     },
-    async ({ sessionId }) => {
-      const briefing = `# 🎯 Heist Escape - Mission Briefing
-
-**Session ID**: ${sessionId}
-**Your Role**: Examiner (Agent)
-**Theme**: Light, professional museum heist
-
-## Mission Objective
-Your team's goal is to infiltrate the museum vault and retrieve the **Sunburst Diamond** 💎
-
-The museum has 5 rooms:
-1. **Museum Lobby** - Find the gallery key and first vault digit
-2. **Gallery A** - Renaissance wing with second digit
-3. **Archives** - Card catalog puzzle and third digit  
-4. **Vault Access** - Assemble and enter the 4-digit code
-5. **The Vault** - Claim the diamond
-
-## Your Role: Examiner (Agent)
-As the Examiner, your responsibilities are:
-- **Read and analyze** documents, signs, and clues
-- **Examine objects** closely for hidden information
-- **Communicate findings** to your Operator partner
-- **Navigate** the team through the museum
-
-The Operator (human partner) will:
-- Open drawers and containers
-- Enter codes at keypads
-- Manage the shared inventory
-- Execute physical interactions
-
-## 🔑 Critical Information
-
-**Assembly Rule**: The 4-digit vault code is found across all 4 rooms.
-**Combine digits in ORDER BY ROOM NUMBER** (Room 1 → Room 2 → Room 3 → Room 4)
-
-## Suggested First Steps
-1. \`join_session\` - Confirm your session: "${sessionId}"
-2. \`look_around\` - Survey the Museum Lobby
-3. \`examine_object\` - Check the "poster-board" for the assembly rule
-4. \`examine_object\` - Search the "flower-arrangement" (key location)
-5. Communicate with your Operator to coordinate drawer searches
-
-## Available Tools
-- \`look_around\` - Survey current room
-- \`examine_object\` - Inspect objects for clues
-- \`use_item\` - Take or use items (when you find them)
-- \`get_inventory\` - Check shared team inventory
-- \`get_hints\` - Request progressive hints if stuck
-- \`get_recent_actions\` - See what your Operator has done
-
-## Cooperative Guidelines
-- **Share all findings** - Your Operator can't see what you read
-- **Request specific actions** - "Please open reception-desk-bottom drawer"
-- **Track digits** - Write down the vault code as you find each piece
-- **Work together** - Neither role can succeed alone
-
-## Light Theme Note
-This heist takes place in a **bright, welcoming museum** with:
-- Natural daylight through tall windows
-- Polished marble floors and white walls
-- Professional, calm atmosphere
-- Warm wood tones and brass fixtures
-
-This is an elegant professional operation, not a dark infiltration.
-
-## Success Metrics
-- Time to complete: 30-45 minutes (full game) or 5-10 minutes (pitch demo)
-- Hints used: Fewer is better, but don't get stuck
-- Team coordination: Clear communication = faster success
-
-**Good luck, Agent. Your team is counting on you.** 🕵️
-
----
-*Use \`look_around\` to begin your mission.*`;
-      
-      return textResult(briefing);
+    async ({ sessionId, playerId, role, classified }) => {
+      const briefing = await resolveBriefing(env, { sessionId, playerId, role, classified });
+      return textResult(briefing.text);
     }
   );
 
