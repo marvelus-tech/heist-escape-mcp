@@ -1,0 +1,192 @@
+/*
+ * Heist Escape - Stage design tokens
+ *
+ * Visual thesis: light pearl / ivory surfaces, dark readable text, champagne gold
+ * for success / LIVE / rewards, soft cyan for examine focus, soft magenta reserved
+ * for the Watch role. Frosted glass panels with thin gold / cyan hairlines.
+ *
+ * Every token is prefixed `--he-` so page-local styles cannot collide with it.
+ * Utility classes (`.he-*`) are shared chrome primitives that role pages may
+ * reuse without importing Stage-specific layout.
+ */
+
+:root {
+  /* Surfaces */
+  --he-pearl-0: #fdfcf9;
+  --he-pearl-1: #f7f4ee;
+  --he-pearl-2: #efeae0;
+  --he-pearl-3: #e6dfd1;
+
+  /* Champagne gold */
+  --he-gold-100: #f9efd6;
+  --he-gold-200: #f0dfae;
+  --he-gold-300: #e6c982;
+  --he-gold-500: #c9a24a;
+  --he-gold-700: #9c7a2b;
+  --he-gold-900: #5f4a17;
+
+  /* Soft cyan (examine / interact focus) */
+  --he-cyan-100: #e4f6fa;
+  --he-cyan-300: #a6e0ec;
+  --he-cyan-500: #4fb8d0;
+  --he-cyan-700: #1f8ba3;
+
+  /* Soft magenta (Watch role only) */
+  --he-magenta-100: #fbe7f2;
+  --he-magenta-300: #f0b6d6;
+  --he-magenta-500: #d9689f;
+  --he-magenta-700: #b03d7c;
+
+  /* Text */
+  --he-ink-900: #1f1b15;
+  --he-ink-700: #3e372c;
+  --he-ink-500: #6d6555;
+  --he-ink-300: #a89f8f;
+
+  /* Frosted glass */
+  --he-glass-bg: rgba(255, 253, 248, 0.72);
+  --he-glass-bg-strong: rgba(255, 253, 248, 0.9);
+  --he-glass-blur: 18px;
+  --he-glass-shadow: 0 12px 32px rgba(70, 52, 20, 0.1), 0 1px 2px rgba(70, 52, 20, 0.06);
+  --he-glass-shadow-soft: 0 6px 18px rgba(70, 52, 20, 0.07);
+
+  /* Hairlines (1px borders) */
+  --he-hairline-soft: rgba(31, 27, 21, 0.08);
+  --he-hairline-gold: rgba(201, 162, 74, 0.6);
+  --he-hairline-cyan: rgba(79, 184, 208, 0.6);
+  --he-hairline-magenta: rgba(217, 104, 159, 0.55);
+
+  /* Glows (used sparingly on focus / role accents) */
+  --he-glow-gold: 0 0 0 1px var(--he-hairline-gold), 0 0 24px rgba(201, 162, 74, 0.28);
+  --he-glow-cyan: 0 0 0 1px var(--he-hairline-cyan), 0 0 24px rgba(79, 184, 208, 0.28);
+  --he-glow-magenta: 0 0 0 1px var(--he-hairline-magenta), 0 0 24px rgba(217, 104, 159, 0.26);
+
+  /* Radii */
+  --he-r-xs: 6px;
+  --he-r-sm: 10px;
+  --he-r-md: 16px;
+  --he-r-lg: 24px;
+  --he-r-pill: 999px;
+
+  /* Spacing scale (4px base) */
+  --he-s-1: 4px;
+  --he-s-2: 8px;
+  --he-s-3: 12px;
+  --he-s-4: 16px;
+  --he-s-5: 24px;
+  --he-s-6: 32px;
+  --he-s-7: 48px;
+
+  /* Type */
+  --he-font-display: 'Cinzel', 'Cormorant Garamond', 'Times New Roman', Georgia, serif;
+  --he-font-ui: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --he-font-mono: 'SFMono-Regular', Menlo, Consolas, 'Liberation Mono', monospace;
+  --he-track-caps: 0.14em;
+
+  /* Motion */
+  --he-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --he-dur-fast: 160ms;
+  --he-dur: 280ms;
+  --he-shimmer-dur: 6s;
+
+  /* HUD geometry (Stage live view). Scales with viewport so a 4K TV and a
+     1080p projector keep the same 75%+ open center. */
+  --he-hud-gap: clamp(10px, 0.9vw, 18px);
+  --he-hud-top-h: clamp(52px, 5.2vh, 72px);
+  --he-hud-side-w: clamp(220px, 19vw, 320px);
+  --he-hud-bottom-h: clamp(104px, 12.5vh, 150px);
+}
+
+/* Reduced motion: shimmer becomes a static sheen, pulses stop. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --he-dur-fast: 0ms;
+    --he-dur: 0ms;
+    --he-shimmer-dur: 0s;
+  }
+}
+
+/* ---------- Shared primitives ---------- */
+
+.he-glass {
+  background: var(--he-glass-bg);
+  -webkit-backdrop-filter: blur(var(--he-glass-blur)) saturate(1.15);
+  backdrop-filter: blur(var(--he-glass-blur)) saturate(1.15);
+  border: 1px solid var(--he-hairline-soft);
+  box-shadow: var(--he-glass-shadow);
+  border-radius: var(--he-r-md);
+  color: var(--he-ink-900);
+}
+
+.he-glass--strong {
+  background: var(--he-glass-bg-strong);
+}
+
+.he-hairline-gold { border-color: var(--he-hairline-gold); }
+.he-hairline-cyan { border-color: var(--he-hairline-cyan); }
+.he-hairline-magenta { border-color: var(--he-hairline-magenta); }
+
+/* Small spaced caps label, e.g. "ACTION TICKER" */
+.he-eyebrow {
+  font-family: var(--he-font-ui);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: var(--he-track-caps);
+  text-transform: uppercase;
+  color: var(--he-ink-500);
+}
+
+/* Engraved gold display text (titles) */
+.he-gold-text {
+  font-family: var(--he-font-display);
+  font-weight: 700;
+  color: var(--he-gold-700);
+  background-image: linear-gradient(
+    100deg,
+    var(--he-gold-700) 0%,
+    var(--he-gold-500) 30%,
+    var(--he-gold-200) 50%,
+    var(--he-gold-500) 70%,
+    var(--he-gold-700) 100%
+  );
+  background-size: 220% 100%;
+  background-position: 0% 50%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.he-shimmer {
+  animation: he-shimmer var(--he-shimmer-dur) linear infinite;
+}
+
+@keyframes he-shimmer {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 220% 50%; }
+}
+
+/* LIVE pill dot */
+.he-live-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--he-gold-500);
+  box-shadow: 0 0 0 3px rgba(201, 162, 74, 0.25);
+  animation: he-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes he-pulse {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(201, 162, 74, 0.25); }
+  50% { box-shadow: 0 0 0 7px rgba(201, 162, 74, 0.08); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .he-shimmer,
+  .he-live-dot {
+    animation: none;
+  }
+  .he-gold-text {
+    background-position: 50% 50%;
+  }
+}

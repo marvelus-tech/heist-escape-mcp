@@ -7,6 +7,7 @@
  * /#/join?s=SESSION&role=operator - Operator controls (phone-friendly)
  */
 
+import './stage/theme/tokens.css';
 import { StageApp } from './stage/StageApp';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8787';
