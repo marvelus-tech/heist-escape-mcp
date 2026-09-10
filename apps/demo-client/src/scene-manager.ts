@@ -13,10 +13,13 @@ import {
   column,
   displayCase,
   floorInlay,
+  galaBanner,
   goldTrim,
   lightStrip,
   pedestal,
+  revealEdge,
   sconce,
+  securityCamera,
   sunburstDiamond,
   vaultDoor,
   wainscot,
@@ -237,10 +240,32 @@ export class SceneManager {
     }
   }
 
+  /** Inactive security cameras tucked into the upper back corners (story: they are off tonight). */
+  private addCameras(): void {
+    const half = ROOM_SIZE / 2;
+    for (const x of [-half + 0.6, half - 0.6]) {
+      const cam = securityCamera();
+      cam.position.set(x, WALL_HEIGHT - 1.0, -half + 0.3);
+      cam.lookAt(0, 4.5, 0);
+      this.roomRoot.add(cam);
+    }
+  }
+
   private addRoomAccents(roomId: number): void {
     const half = ROOM_SIZE / 2;
+    if (roomId !== 3) this.addCameras();
     switch (roomId) {
-      case 1: // Museum Lobby: sunlit rotunda, brass windows, columns, glass vitrines
+      case 1: // Museum Lobby: gala-prep rotunda, banner, brass windows, columns, glass vitrines
+        {
+          const banner = galaBanner();
+          banner.position.set(0, 6.9, -half + 2.6);
+          this.roomRoot.add(banner);
+        }
+        for (const x of [-5, 5]) {
+          const rope = this.createVelvetRope();
+          rope.position.set(x, 0, 3);
+          this.roomRoot.add(rope);
+        }
         for (const x of [-7, 0, 7]) {
           const window = brassWindow(2.2, 3.4);
           window.position.set(x, 4.6, -half + 0.3);
@@ -401,7 +426,7 @@ export class SceneManager {
     if (name.includes('cabinet') || name.includes('locker')) return this.createCabinet();
     if (name.includes('diamond')) return this.createDiamond();
     if (name.includes('keypad')) return this.createKeypad();
-    if (name.includes('painting') || name.includes('blueprint')) return this.createPainting(name.includes('blueprint'));
+    if (name.includes('painting') || name.includes('blueprint')) return this.createPainting(name);
     if (name.includes('catalog')) return this.createCatalog();
     if (name.includes('flower')) return this.createFlowerVase();
     if (name.includes('poster') || name.includes('controls')) return this.createPosterBoard();
@@ -462,20 +487,29 @@ export class SceneManager {
     const base = pedestal();
     group.add(base);
 
-    const gem = sunburstDiamond();
+    // Display stone: the "too perfect" one, cooler sparkle (see GEM_LOOKS.pedestal).
+    const gem = sunburstDiamond('pedestal');
     gem.position.y = (base.userData.topY as number) + 0.85;
     gem.name = 'sunburst-gem';
     group.add(gem);
+    this.registerShimmer(gem);
+    this.spinners.push(gem);
+    return group;
+  }
 
-    gem.traverse(child => {
+  /** Collects locked-emissive materials + 'hero-glow' sprites so update() can shimmer them. */
+  private registerShimmer(root: THREE.Object3D): void {
+    root.traverse(child => {
       if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
-        if (!this.heroMaterials.includes(child.material)) this.heroMaterials.push(child.material);
+        const material = child.material;
+        if (material.userData.heroBaseEmissive === undefined) {
+          material.userData.heroBaseEmissive = material.emissiveIntensity;
+        }
+        if (!this.heroMaterials.includes(material)) this.heroMaterials.push(material);
       } else if (child instanceof THREE.Sprite && child.name === 'hero-glow') {
         this.heroGlows.push(child);
       }
     });
-    this.spinners.push(gem);
-    return group;
   }
 
   private createKeypad(): THREE.Object3D {
@@ -499,16 +533,43 @@ export class SceneManager {
     return group;
   }
 
-  private createPainting(blueprint: boolean): THREE.Object3D {
+  /**
+   * Gold-framed picture. The archives' hidden painting hangs on a hinge, slightly
+   * ajar, with a gold emissive edge leaking from the vault-access recess behind it.
+   */
+  private createPainting(name: string): THREE.Object3D {
     const group = new THREE.Group();
-    const frame = new THREE.Mesh(new THREE.BoxGeometry(1.7, 1.2, 0.08), materials.gold());
-    group.add(frame);
+    const blueprint = name.includes('blueprint');
+    const hinged = name.includes('hidden');
+    const width = 1.7;
+    const height = 1.2;
+
+    const picture = new THREE.Group();
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(width, height, 0.08), materials.gold());
+    picture.add(frame);
     const canvas = new THREE.Mesh(
       new THREE.PlaneGeometry(1.45, 0.95),
       new THREE.MeshStandardMaterial({ color: blueprint ? 0xcfe3f5 : 0xe7d9bf, roughness: 0.9 })
     );
     canvas.position.z = 0.05;
-    group.add(canvas);
+    picture.add(canvas);
+
+    if (hinged) {
+      // Pivot on the left edge so the frame swings like a door, left slightly ajar.
+      picture.children.forEach(child => { child.position.x = width / 2; });
+      const hinge = new THREE.Group();
+      hinge.position.x = -width / 2;
+      hinge.rotation.y = 0.28;
+      hinge.add(picture);
+      group.add(hinge);
+
+      const edge = revealEdge(width - 0.1, height - 0.1);
+      edge.position.z = -0.06;
+      group.add(edge);
+      this.registerShimmer(edge);
+    } else {
+      group.add(picture);
+    }
     return group;
   }
 
@@ -616,7 +677,10 @@ export class SceneManager {
     return group;
   }
 
-  /** Chrome vault shelving with gold ingots and a lockbox. */
+  /**
+   * Chrome vault shelving with gold ingots. The top shelf carries the authentic
+   * stone: smaller, warmer gold, no cyan in its glow (contrast with the pedestal).
+   */
   private createSteelShelves(): THREE.Object3D {
     const group = new THREE.Group();
     const chrome = materials.chrome();
@@ -626,17 +690,32 @@ export class SceneManager {
       post.position.set(x, 1.0, z);
       group.add(post);
     }
-    for (let i = 0; i < 4; i++) {
+    const shelves = 4;
+    for (let i = 0; i < shelves; i++) {
       const y = 0.3 + i * 0.55;
       const shelf = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.03, 0.55), chrome);
       shelf.position.y = y;
       group.add(shelf);
+      if (i === shelves - 1) continue;
       for (let b = 0; b < 3; b++) {
         const ingot = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.08, 0.12), gold);
         ingot.position.set(-0.4 + b * 0.4, y + 0.06, 0.05);
         group.add(ingot);
       }
     }
+    const cushion = new THREE.Mesh(
+      new THREE.BoxGeometry(0.4, 0.06, 0.3),
+      new THREE.MeshStandardMaterial({ color: 0x8e2a3a, roughness: 0.95 })
+    );
+    const topY = 0.3 + (shelves - 1) * 0.55;
+    cushion.position.set(0, topY + 0.045, 0);
+    group.add(cushion);
+    const stone = sunburstDiamond('authentic');
+    stone.name = 'authentic-gem';
+    stone.position.set(0, topY + 0.32, 0);
+    group.add(stone);
+    this.registerShimmer(stone);
+    this.spinners.push(stone);
     return group;
   }
 
@@ -678,6 +757,7 @@ export class SceneManager {
       }
     });
     meshes.forEach(mesh => {
+      if ((mesh.material as THREE.Material).userData.emissiveLocked) return;
       const hull = new THREE.Mesh(mesh.geometry, outline);
       hull.position.copy(mesh.position);
       hull.quaternion.copy(mesh.quaternion);

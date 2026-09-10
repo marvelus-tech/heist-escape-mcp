@@ -288,15 +288,37 @@ export function pedestal(): THREE.Group {
   return group;
 }
 
+export type GemVariant = 'pedestal' | 'authentic';
+
 /**
- * The Sunburst Diamond: brilliant-cut silhouette from a crown (truncated cone)
- * and pavilion (inverted cone), champagne glass body with a gold shimmer
- * emissive, wrapped in layered additive glows for the "bloom" without a post pass.
+ * Story bible: the pedestal stone is the display piece, slightly "too perfect",
+ * so it sparkles cooler (ice-white body, pale gold light, faint cyan rays).
+ * The authentic stone reads warmer, honest gold, with no cyan in its glow.
  */
-export function sunburstDiamond(): THREE.Group {
+const GEM_LOOKS: Record<GemVariant, {
+  color: number; emissive: number; emissiveIntensity: number; envMapIntensity: number;
+  core: number; halo: number; rays: number; light: number; scale: number;
+}> = {
+  pedestal: {
+    color: 0xfff1d6, emissive: 0xffc966, emissiveIntensity: 0.6, envMapIntensity: 1.6,
+    core: 0xfff0c8, halo: 0xffd27a, rays: 0xd8f3ff, light: 0xffd98a, scale: 1.7,
+  },
+  authentic: {
+    color: 0xffc65a, emissive: 0xffa928, emissiveIntensity: 0.7, envMapIntensity: 1.2,
+    core: 0xffd27a, halo: 0xffb636, rays: 0xffe2a6, light: 0xffc85c, scale: 0.55,
+  },
+};
+
+/**
+ * Brilliant-cut silhouette from a crown (truncated cone), table and pavilion
+ * (inverted cone), glass body with a gold shimmer emissive, wrapped in layered
+ * additive glows for the "bloom" without a post pass.
+ */
+export function sunburstDiamond(variant: GemVariant = 'pedestal'): THREE.Group {
+  const look = GEM_LOOKS[variant];
   const group = new THREE.Group();
   const gem = lockEmissive(new THREE.MeshPhysicalMaterial({
-    color: 0xffc65a,
+    color: look.color,
     metalness: 0.0,
     roughness: 0.04,
     transparent: true,
@@ -304,9 +326,9 @@ export function sunburstDiamond(): THREE.Group {
     ior: 2.2,
     clearcoat: 1.0,
     clearcoatRoughness: 0.03,
-    envMapIntensity: 1.2,
-    emissive: 0xffa928,
-    emissiveIntensity: 0.7,
+    envMapIntensity: look.envMapIntensity,
+    emissive: look.emissive,
+    emissiveIntensity: look.emissiveIntensity,
     flatShading: true,
     side: THREE.DoubleSide,
   }));
@@ -324,15 +346,112 @@ export function sunburstDiamond(): THREE.Group {
     group.add(part);
   }
 
-  const core = makeGlow(0xffd27a, 1.5, 0.32);
-  const halo = makeGlow(0xffb636, 3.4, 0.16);
-  const rays = makeGlow(0xffe2a6, 6.0, 0.07);
+  const core = makeGlow(look.core, 1.5, 0.32);
+  const halo = makeGlow(look.halo, 3.4, 0.16);
+  const rays = makeGlow(look.rays, 6.0, 0.07);
   core.name = halo.name = rays.name = 'hero-glow';
   group.add(core, halo, rays);
 
-  const light = new THREE.PointLight(0xffc85c, 14, 9, 2);
-  light.position.y = 0.4;
-  group.add(light);
-  group.scale.setScalar(1.7);
+  if (variant === 'pedestal') {
+    const light = new THREE.PointLight(look.light, 14, 9, 2);
+    light.position.y = 0.4;
+    group.add(light);
+  }
+  group.scale.setScalar(look.scale);
+  return group;
+}
+
+/**
+ * Hinged-reveal edge: a gold emissive rim sitting just proud of a wall frame,
+ * plus a warm glow, so light appears to leak from behind the painting.
+ */
+export function revealEdge(width: number, height: number): THREE.Group {
+  const group = new THREE.Group();
+  const rim = lockEmissive(materials.emissive(0xffd27a, 1.8));
+  const t = 0.05;
+  for (const [w, h, x, y] of [
+    [width, t, 0, height / 2], [width, t, 0, -height / 2],
+    [t, height, -width / 2, 0], [t, height, width / 2, 0],
+  ]) {
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.03), rim);
+    bar.position.set(x, y, 0);
+    group.add(bar);
+  }
+  const glow = makeGlow(0xffd27a, Math.max(width, height) * 1.5, 0.22);
+  glow.name = 'reveal-glow';
+  group.add(glow);
+  return group;
+}
+
+/** Inactive security camera: brass wall mount, chrome body, dark unlit lens. No LED. */
+export function securityCamera(): THREE.Group {
+  const group = new THREE.Group();
+  const brass = materials.brass();
+  const chrome = materials.chrome();
+  const mount = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.06), brass);
+  group.add(mount);
+  const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.22, 8), brass);
+  arm.rotation.x = Math.PI / 2;
+  arm.position.set(0, -0.04, 0.13);
+  group.add(arm);
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.12, 0.3), chrome);
+  body.position.set(0, -0.12, 0.3);
+  body.rotation.x = 0.35;
+  group.add(body);
+  const lens = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.045, 0.045, 0.04, 16),
+    new THREE.MeshStandardMaterial({ color: 0x2b2f38, roughness: 0.2, metalness: 0.4 })
+  );
+  lens.rotation.x = Math.PI / 2 + 0.35;
+  lens.position.set(0, -0.17, 0.45);
+  group.add(lens);
+  return group;
+}
+
+let bannerTexture: THREE.CanvasTexture | null = null;
+
+/** Gala banner: cream silk with gold serif lettering, hung from a brass rod. */
+export function galaBanner(text = 'DIAMONDS THROUGH THE AGES', subtitle = 'GALA PREVIEW'): THREE.Group {
+  const group = new THREE.Group();
+  if (!bannerTexture) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1024;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
+    ctx.fillStyle = '#f7f1e6';
+    ctx.fillRect(0, 0, 1024, 256);
+    ctx.strokeStyle = '#cfa64a';
+    ctx.lineWidth = 6;
+    ctx.strokeRect(18, 18, 988, 220);
+    ctx.fillStyle = '#b8892f';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    // Shrink the headline until it fits inside the gold border with a margin.
+    let fontSize = 84;
+    do {
+      ctx.font = `bold ${fontSize}px Georgia, "Times New Roman", serif`;
+      fontSize -= 4;
+    } while (ctx.measureText(text).width > 900 && fontSize > 24);
+    ctx.fillText(text, 512, 112);
+    ctx.font = '38px Georgia, "Times New Roman", serif';
+    ctx.fillText(subtitle, 512, 196);
+    bannerTexture = new THREE.CanvasTexture(canvas);
+    bannerTexture.colorSpace = THREE.SRGBColorSpace;
+    bannerTexture.anisotropy = 4;
+  }
+  const cloth = new THREE.Mesh(
+    new THREE.PlaneGeometry(6, 1.5),
+    new THREE.MeshStandardMaterial({ map: bannerTexture, roughness: 0.9, side: THREE.DoubleSide })
+  );
+  cloth.position.y = -0.8;
+  group.add(cloth);
+  const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 6.4, 10), materials.brass());
+  rod.rotation.z = Math.PI / 2;
+  group.add(rod);
+  for (const x of [-3.2, 3.2]) {
+    const finial = new THREE.Mesh(new THREE.SphereGeometry(0.07, 12, 8), materials.gold());
+    finial.position.x = x;
+    group.add(finial);
+  }
   return group;
 }
