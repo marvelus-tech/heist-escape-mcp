@@ -1,4 +1,26 @@
 import * as THREE from 'three';
+import {
+  PALETTE,
+  getStudioEnvironment,
+  lockEmissive,
+  makeGlow,
+  materials,
+  prefersReducedMotion,
+} from './scene/materials';
+import {
+  bookshelf,
+  brassWindow,
+  column,
+  displayCase,
+  floorInlay,
+  goldTrim,
+  lightStrip,
+  pedestal,
+  sconce,
+  sunburstDiamond,
+  vaultDoor,
+  wainscot,
+} from './scene/props';
 
 interface Room {
   id: number;
@@ -14,681 +36,710 @@ interface GameObject {
   room_id: number;
 }
 
+/** Everything a highlighted interactable needs to breathe and flash. */
+interface Interactable {
+  root: THREE.Object3D;
+  tinted: THREE.MeshStandardMaterial[];
+  outline: THREE.MeshBasicMaterial;
+  halo: THREE.Sprite;
+  phase: number;
+}
+
+const OUTLINE_OPACITY = 0.38;
+const OUTLINE_SCALE = 1.03;
+
+const ROOM_SIZE = 20;
+const WALL_HEIGHT = 8;
+const IDLE_EMISSIVE = 0.09;
+const IDLE_PULSE_AMPLITUDE = 0.045;
+const IDLE_PULSE_PERIOD_MS = 2600;
+const EXAMINE_BOOST = 0.6;
+const EXAMINE_DURATION_MS = 1400;
+
 /**
- * Scene Manager for Heist Escape
- * 
- * Builds premium museum-themed 3D dioramas for each room
- * Light theme: white/marble, warm brass, soft wood, paper documents
- * Hemisphere + warm key + cool rim lighting
+ * Scene Manager for Heist Escape (Module B: scene art direction)
+ *
+ * Light-first luxury museum: pearl marble, champagne brass/gold, glass cases,
+ * soft cyan emissive on interactables, gold shimmer on the hero diamond.
+ * Lighting = hemisphere fill + warm key (only shadow caster) + cool rim.
+ * "Bloom" is faked with additive glow sprites so only emissives and gold glow.
  */
 export class SceneManager {
   private scene: THREE.Scene;
+  private roomRoot = new THREE.Group();
+  private lightRig = new THREE.Group();
   private interactableObjects: Map<string, THREE.Object3D> = new Map();
+  private interactables: Map<THREE.Object3D, Interactable> = new Map();
   private pulsingObjects: Map<THREE.Object3D, { startTime: number; duration: number }> = new Map();
-  private lights: THREE.Light[] = [];
-  
+  private heroMaterials: THREE.MeshStandardMaterial[] = [];
+  private heroGlows: THREE.Sprite[] = [];
+  private spinners: THREE.Object3D[] = [];
+  private reducedMotion = prefersReducedMotion();
+
   constructor(scene: THREE.Scene) {
     this.scene = scene;
+    this.roomRoot.name = 'room';
+    this.lightRig.name = 'lights';
+    this.scene.add(this.roomRoot, this.lightRig);
+
+    // Pearl backdrop + very light haze. Metals need an environment to read as metal.
+    this.scene.background = new THREE.Color(PALETTE.background);
+    this.scene.fog = new THREE.Fog(PALETTE.background, 22, 48);
+    this.scene.environment = getStudioEnvironment();
   }
-  
+
   buildRoom(room: Room, objects: GameObject[]): void {
-    // Clear previous room
     this.clearScene();
-    
-    // Setup premium museum lighting
     this.setupLighting(room.id);
-    
-    // Build floor
-    this.buildFloor();
-    
-    // Build walls based on room
+    this.buildFloor(room.id);
     this.buildWalls(room.id);
-    
-    // Add objects
-    objects.forEach(obj => {
-      this.addRoomObject(obj);
-    });
+    this.addRoomAccents(room.id);
+    objects.forEach(obj => this.addRoomObject(obj));
   }
-  
+
   private setupLighting(roomId: number): void {
-    // Clear existing lights
-    this.lights.forEach(light => this.scene.remove(light));
-    this.lights = [];
-    
-    // Hemisphere light (soft ambient)
-    const hemisphere = new THREE.HemisphereLight(
-      0xffffff, // sky: pure white
-      0xf5f0e8, // ground: warm paper
-      0.6
-    );
-    this.scene.add(hemisphere);
-    this.lights.push(hemisphere);
-    
-    // Warm key light (main directional)
-    const keyLight = new THREE.DirectionalLight(0xfff4e6, 0.8);
-    keyLight.position.set(5, 8, 4);
-    keyLight.castShadow = true;
-    keyLight.shadow.camera.left = -15;
-    keyLight.shadow.camera.right = 15;
-    keyLight.shadow.camera.top = 15;
-    keyLight.shadow.camera.bottom = -15;
-    keyLight.shadow.mapSize.width = 2048;
-    keyLight.shadow.mapSize.height = 2048;
-    this.scene.add(keyLight);
-    this.lights.push(keyLight);
-    
-    // Cool rim light (subtle depth)
-    const rimLight = new THREE.DirectionalLight(0xe6f2ff, 0.3);
-    rimLight.position.set(-4, 6, -6);
-    this.scene.add(rimLight);
-    this.lights.push(rimLight);
-    
-    // Room-specific accent lighting
-    if (roomId === 1) {
-      // Museum lobby: warm spotlights
-      const spot1 = new THREE.SpotLight(0xfff4e6, 0.4, 12, Math.PI / 6, 0.3);
-      spot1.position.set(-3, 7, 0);
-      spot1.target.position.set(-3, 0, 0);
-      spot1.castShadow = true;
-      this.scene.add(spot1);
-      this.scene.add(spot1.target);
-      this.lights.push(spot1);
-      
-      const spot2 = new THREE.SpotLight(0xfff4e6, 0.4, 12, Math.PI / 6, 0.3);
-      spot2.position.set(3, 7, 0);
-      spot2.target.position.set(3, 0, 0);
-      spot2.castShadow = true;
-      this.scene.add(spot2);
-      this.scene.add(spot2.target);
-      this.lights.push(spot2);
+    this.disposeGroup(this.lightRig);
+
+    // Soft skylight fill: white sky, warm marble bounce from below.
+    const hemisphere = new THREE.HemisphereLight(0xfff9f2, 0xd9cbb5, 0.42);
+    this.lightRig.add(hemisphere);
+
+    // Warm key: the single shadow caster (keeps the shadow pass cheap on a laptop).
+    const key = new THREE.DirectionalLight(PALETTE.warmLight, 1.7);
+    key.position.set(6, 10, 5);
+    key.castShadow = true;
+    key.shadow.mapSize.set(2048, 2048);
+    key.shadow.camera.left = -20;
+    key.shadow.camera.right = 20;
+    key.shadow.camera.top = 20;
+    key.shadow.camera.bottom = -20;
+    key.shadow.camera.near = 1;
+    key.shadow.camera.far = 50;
+    key.shadow.bias = -0.0004;
+    key.shadow.normalBias = 0.03;
+    this.lightRig.add(key, key.target);
+
+    // Cool rim from the back-left: separates pale objects from pale walls.
+    const rim = new THREE.DirectionalLight(PALETTE.coolLight, 0.6);
+    rim.position.set(-7, 6, -8);
+    this.lightRig.add(rim, rim.target);
+
+    // Room accents. Spot intensities are candela (three r155+ physical lights).
+    switch (roomId) {
+      case 1:
+        this.addSpot(-4, 7.4, -1, 55, PALETTE.warmLight);
+        this.addSpot(4, 7.4, -1, 55, PALETTE.warmLight);
+        break;
+      case 2:
+        this.addSpot(-4, 7.4, -6, 70, PALETTE.warmLight, -4, 2.5, -9.5);
+        this.addSpot(4, 7.4, -6, 70, PALETTE.warmLight, 4, 2.5, -9.5);
+        this.addSpot(-4, 7.4, 2, 45, PALETTE.warmLight);
+        break;
+      case 3:
+        this.addSpot(0, 7.4, -2, 60, 0xffe9c8);
+        this.addSpot(-6, 7.4, 0, 40, 0xffe9c8, -9, 2, 0);
+        break;
+      case 4:
+        this.addSpot(0, 7.4, -6, 50, PALETTE.warmLight, 0, 1.5, -9.5);
+        break;
+      case 5:
+        this.addSpot(0, 7.6, 3, 40, PALETTE.warmLight, 0, 1.5, 0);
+        break;
     }
   }
-  
+
+  private addSpot(
+    x: number, y: number, z: number,
+    intensity: number, color: THREE.ColorRepresentation,
+    tx = x, ty = 0, tz = z
+  ): void {
+    const spot = new THREE.SpotLight(color, intensity, 16, Math.PI / 7, 0.55, 2);
+    spot.position.set(x, y, z);
+    spot.target.position.set(tx, ty, tz);
+    this.lightRig.add(spot, spot.target);
+  }
+
   private clearScene(): void {
-    // Remove all objects except lights
-    const objectsToRemove: THREE.Object3D[] = [];
-    this.scene.traverse((child) => {
-      if (child instanceof THREE.Mesh || child instanceof THREE.Group) {
-        objectsToRemove.push(child);
+    this.disposeGroup(this.roomRoot);
+    this.interactableObjects.clear();
+    this.interactables.clear();
+    this.pulsingObjects.clear();
+    this.heroMaterials = [];
+    this.heroGlows = [];
+    this.spinners = [];
+  }
+
+  /** Removes children and frees their GPU resources (shared textures are cached, not disposed). */
+  private disposeGroup(group: THREE.Group): void {
+    group.traverse(child => {
+      if (child instanceof THREE.Mesh || child instanceof THREE.Sprite) {
+        child.geometry?.dispose();
+        const mats = Array.isArray(child.material) ? child.material : [child.material];
+        mats.forEach((m: THREE.Material) => m.dispose());
+      } else if (child instanceof THREE.Light) {
+        child.dispose();
       }
     });
-    
-    objectsToRemove.forEach(obj => {
-      this.scene.remove(obj);
-    });
-    
-    this.interactableObjects.clear();
+    group.clear();
   }
-  
-  private buildFloor(): void {
-    // Premium marble-like floor
-    const floorGeometry = new THREE.PlaneGeometry(20, 20);
-    const floorMaterial = new THREE.MeshStandardMaterial({
-      color: 0xfafafa, // Pure white marble
-      roughness: 0.3,
-      metalness: 0.05,
-      envMapIntensity: 0.5
-    });
-    
-    const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+
+  private buildFloor(roomId: number): void {
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(ROOM_SIZE, ROOM_SIZE), materials.marbleFloor());
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
-    this.scene.add(floor);
-    
-    // Subtle floor grid (barely visible)
-    const gridHelper = new THREE.GridHelper(20, 20, 0xf0f0f0, 0xf8f8f8);
-    gridHelper.position.y = 0.01;
-    gridHelper.material.opacity = 0.3;
-    gridHelper.material.transparent = true;
-    this.scene.add(gridHelper);
+    this.roomRoot.add(floor);
+
+    // Gold inlay rings: the museum rotunda motif; the vault gets concentric rings.
+    if (roomId === 1) {
+      this.roomRoot.add(floorInlay(4.2), floorInlay(3.4, 0.04));
+    } else if (roomId === 5) {
+      this.roomRoot.add(floorInlay(2.2), floorInlay(3.2, 0.05), floorInlay(4.4, 0.05));
+    }
   }
-  
+
   private buildWalls(roomId: number): void {
-    // Museum walls: clean white with subtle texture
-    const wallMaterial = new THREE.MeshStandardMaterial({
-      color: 0xffffff,
-      roughness: 0.85,
-      metalness: 0.02
-    });
-    
-    // Back wall
-    const backWall = new THREE.Mesh(
-      new THREE.BoxGeometry(20, 8, 0.5),
-      wallMaterial
-    );
-    backWall.position.set(0, 4, -10);
-    backWall.receiveShadow = true;
-    backWall.castShadow = true;
-    this.scene.add(backWall);
-    
-    // Side walls
-    const leftWall = new THREE.Mesh(
-      new THREE.BoxGeometry(0.5, 8, 20),
-      wallMaterial
-    );
-    leftWall.position.set(-10, 4, 0);
-    leftWall.receiveShadow = true;
-    leftWall.castShadow = true;
-    this.scene.add(leftWall);
-    
-    const rightWall = new THREE.Mesh(
-      new THREE.BoxGeometry(0.5, 8, 20),
-      wallMaterial
-    );
-    rightWall.position.set(10, 4, 0);
-    rightWall.receiveShadow = true;
-    rightWall.castShadow = true;
-    this.scene.add(rightWall);
-    
-    // Add brass/wood accents
-    this.addRoomAccents(roomId);
+    // Vault + corridor are full marble; galleries are cream plaster over a marble wainscot.
+    const wallMaterial = roomId >= 4 ? materials.marbleWall() : materials.creamWall();
+    const half = ROOM_SIZE / 2;
+
+    const back = new THREE.Mesh(new THREE.BoxGeometry(ROOM_SIZE, WALL_HEIGHT, 0.5), wallMaterial);
+    back.position.set(0, WALL_HEIGHT / 2, -half);
+    const left = new THREE.Mesh(new THREE.BoxGeometry(0.5, WALL_HEIGHT, ROOM_SIZE), wallMaterial);
+    left.position.set(-half, WALL_HEIGHT / 2, 0);
+    const right = new THREE.Mesh(new THREE.BoxGeometry(0.5, WALL_HEIGHT, ROOM_SIZE), wallMaterial);
+    right.position.set(half, WALL_HEIGHT / 2, 0);
+    for (const wall of [back, left, right]) {
+      wall.receiveShadow = true;
+      this.roomRoot.add(wall);
+    }
+
+    // Gold crown moulding on all three walls.
+    const crownY = WALL_HEIGHT - 0.4;
+    const crownBack = goldTrim(ROOM_SIZE);
+    crownBack.position.set(0, crownY, -half + 0.3);
+    const crownLeft = goldTrim(ROOM_SIZE, 0.12, 0.14);
+    crownLeft.rotation.y = Math.PI / 2;
+    crownLeft.position.set(-half + 0.3, crownY, 0);
+    const crownRight = crownLeft.clone();
+    crownRight.position.x = half - 0.3;
+    this.roomRoot.add(crownBack, crownLeft, crownRight);
+
+    if (roomId <= 3) {
+      const backWainscot = wainscot(ROOM_SIZE);
+      backWainscot.position.set(0, 0, -half + 0.31);
+      const leftWainscot = wainscot(ROOM_SIZE);
+      leftWainscot.rotation.y = Math.PI / 2;
+      leftWainscot.position.set(-half + 0.31, 0, 0);
+      const rightWainscot = wainscot(ROOM_SIZE);
+      rightWainscot.rotation.y = -Math.PI / 2;
+      rightWainscot.position.set(half - 0.31, 0, 0);
+      this.roomRoot.add(backWainscot, leftWainscot, rightWainscot);
+    }
   }
-  
+
   private addRoomAccents(roomId: number): void {
-    // Add brass/wood accents based on room
+    const half = ROOM_SIZE / 2;
     switch (roomId) {
-      case 1: // Museum Lobby
-        this.addBrassWindow(-8, 5, -9.8);
-        this.addBrassWindow(0, 5, -9.8);
-        this.addBrassWindow(8, 5, -9.8);
-        this.addWoodTrim(-9.5, 2, 0); // Crown molding left
-        this.addWoodTrim(9.5, 2, 0); // Crown molding right
+      case 1: // Museum Lobby: sunlit rotunda, brass windows, columns, glass vitrines
+        for (const x of [-7, 0, 7]) {
+          const window = brassWindow(2.2, 3.4);
+          window.position.set(x, 4.6, -half + 0.3);
+          this.roomRoot.add(window);
+        }
+        for (const x of [-3.6, 3.6]) {
+          const col = column();
+          col.position.set(x, 0, -half + 1.2);
+          this.roomRoot.add(col);
+        }
+        for (const [x, z, kind] of [[-6.5, 1, 'sphere'], [6.5, 1, 'torus'], [-7.5, -5, 'torus'], [7.5, -5, 'sphere']] as Array<[number, number, 'sphere' | 'torus']>) {
+          const vitrine = displayCase(1.2, 1.0, 0.9, kind);
+          vitrine.position.set(x, 0, z);
+          this.roomRoot.add(vitrine);
+        }
         break;
-      case 2: // Gallery A
-        this.addSpotlight(-5, 7, 2, 0xfff4e6);
-        this.addSpotlight(5, 7, 2, 0xfff4e6);
+
+      case 2: // Gallery A: warm spotlit gallery, columns, artefact cases
+        for (const x of [-6.5, 6.5]) {
+          const col = column();
+          col.position.set(x, 0, -half + 1.2);
+          this.roomRoot.add(col);
+        }
+        for (const x of [-7, 7]) {
+          const s = sconce();
+          s.position.set(x, 4.2, -half + 0.3);
+          this.roomRoot.add(s);
+        }
+        for (const [x, z] of [[-7, -3], [7, -3]]) {
+          const vitrine = displayCase(1.4, 1.1, 1.0, 'torus');
+          vitrine.position.set(x, 0, z);
+          this.roomRoot.add(vitrine);
+        }
         break;
-      case 3: // Archives
-        this.addBookshelf(-9, 2, -5);
-        this.addBookshelf(-9, 2, 5);
+
+      case 3: // Archives: oak shelving, brass rails, paper-warm light
+        for (const z of [-6, -1.5, 3]) {
+          const shelf = bookshelf(3, 4);
+          shelf.rotation.y = Math.PI / 2;
+          shelf.position.set(-half + 0.55, 0, z);
+          this.roomRoot.add(shelf);
+        }
+        {
+          const shelf = bookshelf(5, 4);
+          shelf.position.set(4, 0, -half + 0.55);
+          this.roomRoot.add(shelf);
+        }
+        for (const x of [-3, 3]) {
+          const s = sconce();
+          s.position.set(x, 4.2, -half + 0.3);
+          this.roomRoot.add(s);
+        }
         break;
-      case 4: // Vault Access
-        // Minimalist corridor feel
+
+      case 4: // Vault Access: marble corridor, pilasters, brass sconces, cyan guidance strips
+        for (const x of [-6, -2, 2, 6]) {
+          const s = sconce();
+          s.position.set(x, 3.6, -half + 0.3);
+          this.roomRoot.add(s);
+        }
+        for (const x of [-8, -4, 4, 8]) {
+          const pilaster = column(WALL_HEIGHT - 0.5, 0.28);
+          pilaster.position.set(x, 0, -half + 0.45);
+          this.roomRoot.add(pilaster);
+        }
+        for (const x of [-half + 0.6, half - 0.6]) {
+          const strip = lightStrip(ROOM_SIZE - 1.2);
+          strip.rotation.y = Math.PI / 2;
+          strip.position.set(x, 0, 0);
+          this.roomRoot.add(strip);
+        }
+        {
+          const frame = goldTrim(3.2, 0.14, 0.2);
+          frame.position.set(0, 3.0, -half + 0.35);
+          const jambL = goldTrim(0.14, 3.0, 0.2);
+          jambL.position.set(-1.53, 1.5, -half + 0.35);
+          const jambR = jambL.clone();
+          jambR.position.x = 1.53;
+          this.roomRoot.add(frame, jambL, jambR);
+        }
         break;
-      case 5: // Vault
-        this.addVaultRack(-8, 1, -5);
-        this.addVaultRack(8, 1, -5);
+
+      case 5: // Vault: chrome door, gold rings, marble pedestal, dust of gold light
+        {
+          const door = vaultDoor(2.6);
+          door.position.set(0, 3.2, -half + 0.55);
+          this.roomRoot.add(door);
+        }
+        for (const x of [-4.5, 4.5]) {
+          const col = column(WALL_HEIGHT - 0.5, 0.4);
+          col.position.set(x, 0, -half + 1.4);
+          this.roomRoot.add(col);
+        }
+        for (const x of [-half + 0.6, half - 0.6]) {
+          const strip = lightStrip(ROOM_SIZE - 1.2, 0xffd889);
+          strip.rotation.y = Math.PI / 2;
+          strip.position.set(x, 0, 0);
+          this.roomRoot.add(strip);
+        }
         break;
     }
   }
-  
-  private addBrassWindow(x: number, y: number, z: number): void {
-    const group = new THREE.Group();
-    
-    // Glass pane
-    const glassGeometry = new THREE.PlaneGeometry(1.8, 2.8);
-    const glassMaterial = new THREE.MeshPhysicalMaterial({
-      color: 0xe6f3ff,
-      transparent: true,
-      opacity: 0.4,
-      metalness: 0.1,
-      roughness: 0.1,
-      transmission: 0.7
-    });
-    const glass = new THREE.Mesh(glassGeometry, glassMaterial);
-    glass.position.z = 0.05;
-    group.add(glass);
-    
-    // Brass frame
-    const brassMaterial = new THREE.MeshStandardMaterial({
-      color: 0xb8860b, // Dark goldenrod brass
-      roughness: 0.3,
-      metalness: 0.9
-    });
-    
-    const frameThickness = 0.08;
-    const frameDepth = 0.1;
-    
-    // Top frame
-    const topFrame = new THREE.Mesh(
-      new THREE.BoxGeometry(2, frameThickness, frameDepth),
-      brassMaterial
-    );
-    topFrame.position.y = 1.4;
-    group.add(topFrame);
-    
-    // Bottom frame
-    const bottomFrame = new THREE.Mesh(
-      new THREE.BoxGeometry(2, frameThickness, frameDepth),
-      brassMaterial
-    );
-    bottomFrame.position.y = -1.4;
-    group.add(bottomFrame);
-    
-    // Left frame
-    const leftFrame = new THREE.Mesh(
-      new THREE.BoxGeometry(frameThickness, 2.8, frameDepth),
-      brassMaterial
-    );
-    leftFrame.position.x = -0.9;
-    group.add(leftFrame);
-    
-    // Right frame
-    const rightFrame = new THREE.Mesh(
-      new THREE.BoxGeometry(frameThickness, 2.8, frameDepth),
-      brassMaterial
-    );
-    rightFrame.position.x = 0.9;
-    group.add(rightFrame);
-    
-    group.position.set(x, y, z);
-    this.scene.add(group);
-  }
-  
-  private addWoodTrim(x: number, y: number, z: number): void {
-    const woodMaterial = new THREE.MeshStandardMaterial({
-      color: 0xb8956a, // Warm oak
-      roughness: 0.7,
-      metalness: 0.05
-    });
-    
-    const trim = new THREE.Mesh(
-      new THREE.BoxGeometry(0.2, 0.3, 20),
-      woodMaterial
-    );
-    trim.position.set(x, y, z);
-    this.scene.add(trim);
-  }
-  
-  private addSpotlight(x: number, y: number, z: number, color: number = 0xffffff): void {
-    const spot = new THREE.SpotLight(color, 0.5, 15, Math.PI / 6, 0.5);
-    spot.position.set(x, y, z);
-    spot.target.position.set(x, 0, z);
-    spot.castShadow = true;
-    this.scene.add(spot);
-    this.scene.add(spot.target);
-    this.lights.push(spot);
-  }
-  
-  private addBookshelf(x: number, y: number, z: number): void {
-    const shelfGroup = new THREE.Group();
-    
-    const shelfMaterial = new THREE.MeshStandardMaterial({
-      color: 0x8b7355,
-      roughness: 0.7
-    });
-    
-    // Shelf frame
-    const frame = new THREE.Mesh(
-      new THREE.BoxGeometry(0.5, 4, 3),
-      shelfMaterial
-    );
-    shelfGroup.add(frame);
-    
-    shelfGroup.position.set(x, y, z);
-    this.scene.add(shelfGroup);
-  }
-  
-  private addVaultRack(x: number, y: number, z: number): void {
-    const rackMaterial = new THREE.MeshStandardMaterial({
-      color: 0xcccccc,
-      metalness: 0.8,
-      roughness: 0.3
-    });
-    
-    const rack = new THREE.Mesh(
-      new THREE.BoxGeometry(0.4, 2, 2),
-      rackMaterial
-    );
-    rack.position.set(x, y, z);
-    this.scene.add(rack);
-  }
-  
+
   private addRoomObject(obj: GameObject): void {
     const position = this.getObjectPosition(obj.name);
     const mesh = this.createObjectMesh(obj.name);
-    
-    mesh.position.set(position.x, position.y, position.z);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    
-    this.scene.add(mesh);
+    mesh.name = obj.name;
+    mesh.position.copy(position);
+    mesh.traverse(child => {
+      if (child instanceof THREE.Mesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+      }
+    });
+
+    this.roomRoot.add(mesh);
     this.interactableObjects.set(obj.name, mesh);
-    
-    // Add emissive pulse for interactable objects
     this.addEmissivePulse(mesh);
   }
-  
+
   private getObjectPosition(name: string): THREE.Vector3 {
-    // Position mapping for key objects
     const positions: Record<string, THREE.Vector3> = {
-      'reception-desk': new THREE.Vector3(0, 0.6, -2),
-      'visitor-log': new THREE.Vector3(1, 1.2, -1.5),
+      'reception-desk': new THREE.Vector3(0, 0, -2),
+      'visitor-log': new THREE.Vector3(0.6, 0.85, -2.1),
       'poster-board': new THREE.Vector3(-6, 2, -9.5),
-      'flower-arrangement': new THREE.Vector3(3, 1, -2),
-      
-      'display-case-west': new THREE.Vector3(-4, 1, 2),
-      'archives-door': new THREE.Vector3(0, 1, -9.5),
+      'flower-arrangement': new THREE.Vector3(-0.7, 0.82, -1.9),
+
+      'display-case-west': new THREE.Vector3(-4, 0, 2),
+      'archives-door': new THREE.Vector3(0, 1.3, -9.5),
       'painting-landscape': new THREE.Vector3(4, 2.5, -9.5),
-      
-      'filing-cabinet-north': new THREE.Vector3(-5, 1, -8),
-      'card-catalog': new THREE.Vector3(2, 1, -4),
-      'desk-lamp': new THREE.Vector3(0, 1.2, 0),
-      
-      'vault-keypad': new THREE.Vector3(0, 1.5, -9),
+
+      'velvet-rope': new THREE.Vector3(1.5, 0, 2.5),
+
+      'filing-cabinet-north': new THREE.Vector3(-5, 0.9, -8),
+      'card-catalog': new THREE.Vector3(2, 0.3, -4),
+      'desk-lamp': new THREE.Vector3(-1.5, 0, 0),
+      'hidden-painting': new THREE.Vector3(-1, 2.6, -9.5),
+
+      'vault-keypad': new THREE.Vector3(2.1, 1.5, -9.4),
       'blueprint-frame': new THREE.Vector3(-4, 2, -9.5),
-      'maintenance-locker': new THREE.Vector3(6, 1, -5),
-      
-      'sunburst-diamond': new THREE.Vector3(0, 1.5, 0),
-      'environmental-controls': new THREE.Vector3(-5, 2, -9.5)
+      'maintenance-locker': new THREE.Vector3(6, 0.9, -5),
+
+      'sunburst-diamond': new THREE.Vector3(0, 0, 0),
+      'steel-shelves': new THREE.Vector3(7.5, 0, -6),
+      'environmental-controls': new THREE.Vector3(-5, 2, -9.5),
     };
-    
+
     return positions[name] || new THREE.Vector3(Math.random() * 4 - 2, 0.5, Math.random() * 4 - 2);
   }
-  
+
   private createObjectMesh(name: string): THREE.Object3D {
-    // Create appropriate geometry based on object type
-    if (name.includes('desk')) {
-      return this.createDesk();
-    } else if (name.includes('door')) {
-      return this.createDoor();
-    } else if (name.includes('display-case')) {
-      return this.createDisplayCase();
-    } else if (name.includes('cabinet') || name.includes('locker')) {
-      return this.createCabinet();
-    } else if (name.includes('diamond')) {
-      return this.createDiamond();
-    } else if (name.includes('keypad')) {
-      return this.createKeypad();
-    } else if (name.includes('painting') || name.includes('blueprint')) {
-      return this.createPainting();
-    } else if (name.includes('catalog')) {
-      return this.createCatalog();
-    } else if (name.includes('flower')) {
-      return this.createFlowerVase();
-    } else if (name.includes('poster')) {
-      return this.createPosterBoard();
-    }
-    
-    // Default: simple box
+    if (name.includes('lamp')) return this.createLamp();
+    if (name.includes('rope')) return this.createVelvetRope();
+    if (name.includes('shelves')) return this.createSteelShelves();
+    if (name.includes('desk')) return this.createDesk();
+    if (name.includes('door')) return this.createDoor();
+    if (name.includes('display-case')) return displayCase(1.5, 1.2, 1.0, 'sphere');
+    if (name.includes('cabinet') || name.includes('locker')) return this.createCabinet();
+    if (name.includes('diamond')) return this.createDiamond();
+    if (name.includes('keypad')) return this.createKeypad();
+    if (name.includes('painting') || name.includes('blueprint')) return this.createPainting(name.includes('blueprint'));
+    if (name.includes('catalog')) return this.createCatalog();
+    if (name.includes('flower')) return this.createFlowerVase();
+    if (name.includes('poster') || name.includes('controls')) return this.createPosterBoard();
+    if (name.includes('log')) return this.createBook();
     return this.createGenericObject();
   }
-  
+
   private createDesk(): THREE.Object3D {
     const group = new THREE.Group();
-    
-    // Premium warm wood material
-    const woodMaterial = new THREE.MeshStandardMaterial({
-      color: 0xa0826d, // Rich mahogany
-      roughness: 0.5,
-      metalness: 0.05
-    });
-    
-    // Desktop
-    const top = new THREE.Mesh(
-      new THREE.BoxGeometry(2, 0.1, 1),
-      woodMaterial
-    );
-    top.position.y = 0.6;
-    top.castShadow = true;
-    top.receiveShadow = true;
+    const wood = materials.mahogany();
+    const brass = materials.brass();
+
+    const top = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.08, 1.1), wood);
+    top.position.y = 0.78;
     group.add(top);
-    
-    // Legs
-    for (let x of [-0.8, 0.8]) {
-      for (let z of [-0.3, 0.3]) {
-        const leg = new THREE.Mesh(
-          new THREE.BoxGeometry(0.1, 0.6, 0.1),
-          woodMaterial
-        );
-        leg.position.set(x, 0.3, z);
-        leg.castShadow = true;
-        group.add(leg);
-      }
-    }
-    
+    const inlay = new THREE.Mesh(new THREE.BoxGeometry(2.66, 0.02, 1.16), brass);
+    inlay.position.y = 0.73;
+    group.add(inlay);
+    const body = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.66, 0.95), wood);
+    body.position.y = 0.4;
+    group.add(body);
+    const kick = new THREE.Mesh(new THREE.BoxGeometry(2.45, 0.08, 1.0), brass);
+    kick.position.y = 0.04;
+    group.add(kick);
     return group;
   }
-  
+
   private createDoor(): THREE.Object3D {
-    const doorMaterial = new THREE.MeshStandardMaterial({
-      color: 0xb8860b,
-      roughness: 0.5,
-      metalness: 0.6
-    });
-    
-    const door = new THREE.Mesh(
-      new THREE.BoxGeometry(1.2, 2.4, 0.1),
-      doorMaterial
-    );
-    
-    return door;
-  }
-  
-  private createDisplayCase(): THREE.Object3D {
     const group = new THREE.Group();
-    
-    const glassMaterial = new THREE.MeshPhysicalMaterial({
-      color: 0xffffff,
-      transparent: true,
-      opacity: 0.3,
-      roughness: 0.1,
-      metalness: 0.1,
-      transmission: 0.9,
-      thickness: 0.5
-    });
-    
-    const case1 = new THREE.Mesh(
-      new THREE.BoxGeometry(1.5, 1.5, 1),
-      glassMaterial
-    );
-    case1.position.y = 0.75;
-    group.add(case1);
-    
+    const door = new THREE.Mesh(new THREE.BoxGeometry(1.4, 2.6, 0.12), materials.mahogany());
+    group.add(door);
+    const trim = new THREE.Mesh(new THREE.BoxGeometry(1.6, 2.8, 0.08), materials.gold());
+    trim.position.z = -0.04;
+    group.add(trim);
+    const handle = new THREE.Mesh(new THREE.SphereGeometry(0.06, 12, 8), materials.gold());
+    handle.position.set(0.5, -0.1, 0.1);
+    group.add(handle);
     return group;
   }
-  
+
   private createCabinet(): THREE.Object3D {
-    const cabinetMaterial = new THREE.MeshStandardMaterial({
-      color: 0x696969,
-      roughness: 0.7,
-      metalness: 0.3
-    });
-    
-    const cabinet = new THREE.Mesh(
-      new THREE.BoxGeometry(0.8, 1.8, 0.5),
-      cabinetMaterial
-    );
-    
-    return cabinet;
-  }
-  
-  private createDiamond(): THREE.Object3D {
-    const diamondGeometry = new THREE.OctahedronGeometry(0.3, 0);
-    const diamondMaterial = new THREE.MeshPhysicalMaterial({
-      color: 0xffff00,
-      transparent: true,
-      opacity: 0.9,
-      roughness: 0.1,
-      metalness: 0.1,
-      transmission: 0.5,
-      emissive: 0xffff00,
-      emissiveIntensity: 0.5
-    });
-    
-    const diamond = new THREE.Mesh(diamondGeometry, diamondMaterial);
-    
-    // Add rotation animation
     const group = new THREE.Group();
-    group.add(diamond);
-    
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.8, 0.55), materials.chrome());
+    group.add(body);
+    const brass = materials.brass();
+    for (const y of [0.55, 0.1, -0.35]) {
+      const handle = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.03, 0.03), brass);
+      handle.position.set(0, y, 0.29);
+      group.add(handle);
+    }
     return group;
   }
-  
+
+  /** Hero object: stays gold (no cyan treatment), shimmer + spin handled in update(). */
+  private createDiamond(): THREE.Object3D {
+    const group = new THREE.Group();
+    group.userData.hero = true;
+    const base = pedestal();
+    group.add(base);
+
+    const gem = sunburstDiamond();
+    gem.position.y = (base.userData.topY as number) + 0.85;
+    gem.name = 'sunburst-gem';
+    group.add(gem);
+
+    gem.traverse(child => {
+      if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
+        if (!this.heroMaterials.includes(child.material)) this.heroMaterials.push(child.material);
+      } else if (child instanceof THREE.Sprite && child.name === 'hero-glow') {
+        this.heroGlows.push(child);
+      }
+    });
+    this.spinners.push(gem);
+    return group;
+  }
+
   private createKeypad(): THREE.Object3D {
     const group = new THREE.Group();
-    
-    const baseMaterial = new THREE.MeshStandardMaterial({
-      color: 0x333333,
-      roughness: 0.6,
-      metalness: 0.4
-    });
-    
-    const base = new THREE.Mesh(
-      new THREE.BoxGeometry(0.3, 0.4, 0.05),
-      baseMaterial
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.46, 0.05), materials.brass());
+    group.add(plate);
+    const screen = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.24, 0.08),
+      lockEmissive(materials.emissive(PALETTE.cyan, 1.2))
     );
-    group.add(base);
-    
-    // LED indicator
-    const led = new THREE.Mesh(
-      new THREE.CircleGeometry(0.02, 16),
-      new THREE.MeshBasicMaterial({ color: 0x00ff00, emissive: 0x00ff00 })
-    );
-    led.position.set(0, 0.15, 0.03);
-    group.add(led);
-    
+    screen.position.set(0, 0.14, 0.03);
+    group.add(screen);
+    const keyMat = materials.chrome();
+    for (let r = 0; r < 3; r++) {
+      for (let c = 0; c < 3; c++) {
+        const key = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.05, 0.02), keyMat);
+        key.position.set((c - 1) * 0.08, 0.02 - r * 0.08, 0.03);
+        group.add(key);
+      }
+    }
     return group;
   }
-  
-  private createPainting(): THREE.Object3D {
+
+  private createPainting(blueprint: boolean): THREE.Object3D {
     const group = new THREE.Group();
-    
-    const frameMaterial = new THREE.MeshStandardMaterial({
-      color: 0x8b7355,
-      roughness: 0.8,
-      metalness: 0.2
-    });
-    
-    const frame = new THREE.Mesh(
-      new THREE.BoxGeometry(1.5, 1, 0.1),
-      frameMaterial
-    );
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(1.7, 1.2, 0.08), materials.gold());
     group.add(frame);
-    
     const canvas = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.3, 0.8),
-      new THREE.MeshStandardMaterial({ color: 0xf5deb3 })
+      new THREE.PlaneGeometry(1.45, 0.95),
+      new THREE.MeshStandardMaterial({ color: blueprint ? 0xcfe3f5 : 0xe7d9bf, roughness: 0.9 })
     );
-    canvas.position.z = 0.06;
+    canvas.position.z = 0.05;
     group.add(canvas);
-    
     return group;
   }
-  
+
   private createCatalog(): THREE.Object3D {
-    const catalogMaterial = new THREE.MeshStandardMaterial({
-      color: 0xd2691e,
-      roughness: 0.7
-    });
-    
-    const catalog = new THREE.Mesh(
-      new THREE.BoxGeometry(1, 0.6, 0.8),
-      catalogMaterial
-    );
-    
-    return catalog;
+    const group = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.6, 0.8), materials.oak());
+    group.add(body);
+    const brass = materials.brass();
+    for (let r = 0; r < 2; r++) {
+      for (let c = 0; c < 4; c++) {
+        const pull = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.03, 0.02), brass);
+        pull.position.set(-0.39 + c * 0.26, 0.14 - r * 0.28, 0.41);
+        group.add(pull);
+      }
+    }
+    return group;
   }
-  
+
   private createFlowerVase(): THREE.Object3D {
     const group = new THREE.Group();
-    
-    // Vase
-    const vaseGeometry = new THREE.CylinderGeometry(0.1, 0.15, 0.3, 16);
-    const vaseMaterial = new THREE.MeshPhysicalMaterial({
-      color: 0xffffff,
-      transparent: true,
-      opacity: 0.8,
-      roughness: 0.1,
-      metalness: 0.1
-    });
-    const vase = new THREE.Mesh(vaseGeometry, vaseMaterial);
+    const vase = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.16, 0.34, 20), materials.glass());
+    vase.position.y = 0.17;
     group.add(vase);
-    
-    // Simple flower petals
-    for (let i = 0; i < 5; i++) {
-      const petal = new THREE.Mesh(
-        new THREE.SphereGeometry(0.08, 8, 8),
-        new THREE.MeshStandardMaterial({ color: 0xffffff })
-      );
-      const angle = (i / 5) * Math.PI * 2;
-      petal.position.set(Math.cos(angle) * 0.1, 0.2, Math.sin(angle) * 0.1);
-      group.add(petal);
+    const petal = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5, envMapIntensity: 0.8 });
+    const gold = materials.gold();
+    for (let i = 0; i < 6; i++) {
+      const angle = (i / 6) * Math.PI * 2;
+      const bloom = new THREE.Mesh(new THREE.SphereGeometry(0.075, 10, 8), petal);
+      bloom.position.set(Math.cos(angle) * 0.12, 0.44 + (i % 2) * 0.05, Math.sin(angle) * 0.12);
+      group.add(bloom);
     }
-    
+    const centre = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 8), gold);
+    centre.position.y = 0.52;
+    group.add(centre);
     return group;
   }
-  
+
   private createPosterBoard(): THREE.Object3D {
-    const board = new THREE.Mesh(
-      new THREE.BoxGeometry(1, 1.5, 0.05),
-      new THREE.MeshStandardMaterial({ color: 0xd3d3d3 })
+    const group = new THREE.Group();
+    const board = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.5, 0.05), materials.paper());
+    group.add(board);
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.6, 0.04), materials.brass());
+    frame.position.z = -0.03;
+    group.add(frame);
+    return group;
+  }
+
+  private createBook(): THREE.Object3D {
+    const group = new THREE.Group();
+    const cover = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.05, 0.46), materials.mahogany());
+    group.add(cover);
+    const pages = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.03, 0.42), materials.paper());
+    pages.position.y = 0.04;
+    group.add(pages);
+    return group;
+  }
+
+  /** Brass banker's lamp on a small marble side table, with a warm glow. */
+  private createLamp(): THREE.Object3D {
+    const group = new THREE.Group();
+    const table = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.5, 0.75, 24), materials.marbleWall());
+    table.position.y = 0.375;
+    group.add(table);
+    const brass = materials.brass();
+    const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 0.04, 16), brass);
+    foot.position.y = 0.77;
+    group.add(foot);
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.45, 8), brass);
+    stem.position.y = 1.0;
+    group.add(stem);
+    const shade = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.18, 0.3, 0.22, 20, 1, true),
+      lockEmissive(materials.emissive(0xffe7bf, 0.9))
     );
-    
-    return board;
+    shade.material.side = THREE.DoubleSide;
+    shade.position.y = 1.28;
+    group.add(shade);
+    const glow = makeGlow(0xffe6b8, 1.4, 0.2);
+    glow.position.y = 1.2;
+    group.add(glow);
+    return group;
   }
-  
+
+  /** Two brass stanchions joined by a draped burgundy rope. */
+  private createVelvetRope(): THREE.Object3D {
+    const group = new THREE.Group();
+    const brass = materials.brass();
+    for (const x of [-0.9, 0.9]) {
+      const base = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.18, 0.04, 16), brass);
+      base.position.set(x, 0.02, 0);
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.95, 10), brass);
+      post.position.set(x, 0.5, 0);
+      const knob = new THREE.Mesh(new THREE.SphereGeometry(0.06, 12, 8), brass);
+      knob.position.set(x, 1.0, 0);
+      group.add(base, post, knob);
+    }
+    const ropeCurve = new THREE.QuadraticBezierCurve3(
+      new THREE.Vector3(-0.9, 0.95, 0), new THREE.Vector3(0, 0.55, 0), new THREE.Vector3(0.9, 0.95, 0)
+    );
+    const rope = new THREE.Mesh(
+      new THREE.TubeGeometry(ropeCurve, 16, 0.03, 8, false),
+      new THREE.MeshStandardMaterial({ color: 0x8e2a3a, roughness: 0.9 })
+    );
+    group.add(rope);
+    return group;
+  }
+
+  /** Chrome vault shelving with gold ingots and a lockbox. */
+  private createSteelShelves(): THREE.Object3D {
+    const group = new THREE.Group();
+    const chrome = materials.chrome();
+    const gold = materials.gold();
+    for (const [x, z] of [[-0.6, -0.25], [0.6, -0.25], [-0.6, 0.25], [0.6, 0.25]]) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.04, 2.0, 0.04), chrome);
+      post.position.set(x, 1.0, z);
+      group.add(post);
+    }
+    for (let i = 0; i < 4; i++) {
+      const y = 0.3 + i * 0.55;
+      const shelf = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.03, 0.55), chrome);
+      shelf.position.y = y;
+      group.add(shelf);
+      for (let b = 0; b < 3; b++) {
+        const ingot = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.08, 0.12), gold);
+        ingot.position.set(-0.4 + b * 0.4, y + 0.06, 0.05);
+        group.add(ingot);
+      }
+    }
+    return group;
+  }
+
   private createGenericObject(): THREE.Object3D {
-    const geometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
-    const material = new THREE.MeshStandardMaterial({
-      color: 0xaaaaaa,
-      roughness: 0.7
-    });
-    
-    return new THREE.Mesh(geometry, material);
+    return new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), materials.marbleWall());
   }
-  
-  private addEmissivePulse(mesh: THREE.Object3D): void {
-    // Add stronger emissive glow to examinable objects
-    mesh.traverse((child) => {
-      if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
-        // Store original emissive or create new
-        if (!child.material.emissive) {
-          child.material.emissive = new THREE.Color(0x4299e1); // Bright blue
-        } else {
-          child.material.emissive.setHex(0x4299e1);
-        }
-        child.material.emissiveIntensity = 0.2; // Subtle idle glow
+
+  /**
+   * Cyan interactable treatment, three cheap layers:
+   *  1. tint every unlocked material's emissive cyan,
+   *  2. an inverted-hull outline (back-face copy of each mesh, slightly scaled),
+   *  3. one additive halo sprite sized to the object.
+   * The idle breathe and the examine flash both run through update();
+   * reduced motion freezes the breathe.
+   */
+  private addEmissivePulse(root: THREE.Object3D): void {
+    if (root.userData.hero) return;
+
+    const tinted: THREE.MeshStandardMaterial[] = [];
+    const bounds = new THREE.Box3();
+    const outline = new THREE.MeshBasicMaterial({
+      color: PALETTE.cyan,
+      side: THREE.BackSide,
+      transparent: true,
+      opacity: OUTLINE_OPACITY,
+      depthWrite: false,
+    });
+    const meshes: THREE.Mesh[] = [];
+    root.updateWorldMatrix(true, true);
+    root.traverse(child => {
+      if (!(child instanceof THREE.Mesh)) return;
+      meshes.push(child);
+      bounds.expandByObject(child);
+      const material = child.material;
+      if (material instanceof THREE.MeshStandardMaterial && !material.userData.emissiveLocked) {
+        material.emissive.setHex(PALETTE.cyan);
+        material.emissiveIntensity = IDLE_EMISSIVE;
+        if (!tinted.includes(material)) tinted.push(material);
       }
     });
-  }
-  
-  pulseObject(object: THREE.Object3D): void {
-    this.pulsingObjects.set(object, {
-      startTime: Date.now(),
-      duration: 1200 // Slightly longer pulse
+    meshes.forEach(mesh => {
+      const hull = new THREE.Mesh(mesh.geometry, outline);
+      hull.position.copy(mesh.position);
+      hull.quaternion.copy(mesh.quaternion);
+      hull.scale.copy(mesh.scale).multiplyScalar(OUTLINE_SCALE);
+      hull.name = 'interactable-outline';
+      mesh.parent?.add(hull);
     });
+
+    const size = bounds.getSize(new THREE.Vector3());
+    const centre = bounds.getCenter(new THREE.Vector3());
+    const halo = makeGlow(PALETTE.cyan, Math.min(Math.max(size.x, size.y, size.z) * 1.9 + 0.6, 3.5), 0.16);
+    halo.name = 'interactable-halo';
+    halo.position.copy(centre);
+    this.roomRoot.add(halo);
+
+    this.interactables.set(root, { root, tinted, outline, halo, phase: Math.random() * Math.PI * 2 });
   }
-  
+
+  /** Hero-moment hook: brief stronger emissive on an examined object. Accepts the object or its name. */
+  pulseObject(object: THREE.Object3D | string): void {
+    const root = typeof object === 'string' ? this.interactableObjects.get(object) : object;
+    if (!root) return;
+    this.pulsingObjects.set(root, { startTime: performance.now(), duration: EXAMINE_DURATION_MS });
+  }
+
   update(): void {
-    // Update pulsing objects
-    const now = Date.now();
-    const toRemove: THREE.Object3D[] = [];
-    
-    this.pulsingObjects.forEach((data, object) => {
-      const elapsed = now - data.startTime;
-      const progress = Math.min(elapsed / data.duration, 1);
-      
-      object.traverse((child) => {
-        if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
-          // Pulse from 0.2 (idle) to 0.8 (peak) and back
-          const pulseIntensity = 0.2 + Math.sin(progress * Math.PI) * 0.6;
-          child.material.emissiveIntensity = pulseIntensity;
-        }
-      });
-      
-      if (progress >= 1) {
-        toRemove.push(object);
+    const now = performance.now();
+    const breathe = this.reducedMotion
+      ? 0
+      : Math.sin((now / IDLE_PULSE_PERIOD_MS) * Math.PI * 2);
+
+    this.interactables.forEach(({ root, tinted, outline, halo, phase }) => {
+      let boost = 0;
+      const pulse = this.pulsingObjects.get(root);
+      if (pulse) {
+        const progress = Math.min((now - pulse.startTime) / pulse.duration, 1);
+        boost = Math.sin(progress * Math.PI) * EXAMINE_BOOST;
+        if (progress >= 1) this.pulsingObjects.delete(root);
       }
+      const idle = IDLE_EMISSIVE + (this.reducedMotion ? 0 : Math.sin(phase + (now / IDLE_PULSE_PERIOD_MS) * Math.PI * 2) * IDLE_PULSE_AMPLITUDE);
+      const intensity = idle + boost;
+      const ratio = intensity / IDLE_EMISSIVE;
+      tinted.forEach(material => { material.emissiveIntensity = intensity; });
+      outline.opacity = Math.min(OUTLINE_OPACITY * ratio, 1);
+      (halo.material as THREE.SpriteMaterial).opacity = (halo.userData.baseOpacity as number) * ratio;
     });
-    
-    toRemove.forEach(obj => {
-      this.pulsingObjects.delete(obj);
-      obj.traverse((child) => {
-        if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
-          child.material.emissiveIntensity = 0.2; // Return to idle glow
-        }
-      });
+
+    // Sunburst Diamond: slow spin + gold shimmer on the gem and its glow layers.
+    const shimmer = 1 + breathe * 0.18;
+    this.heroMaterials.forEach(material => {
+      const base = (material.userData.heroBaseEmissive as number | undefined) ?? 0.5;
+      material.emissiveIntensity = base * shimmer;
     });
-    
-    // Rotate diamonds
-    this.interactableObjects.forEach((obj, name) => {
-      if (name.includes('diamond')) {
-        obj.rotation.y += 0.01;
-      }
+    this.heroGlows.forEach(glow => {
+      const base = (glow.userData.baseOpacity as number | undefined) ?? 0.2;
+      (glow.material as THREE.SpriteMaterial).opacity = base * (1 + breathe * 0.25);
     });
+    if (!this.reducedMotion) {
+      this.spinners.forEach(obj => { obj.rotation.y += 0.006; });
+    }
   }
-  
+
   getInteractableObjects(): Map<string, THREE.Object3D> {
     return this.interactableObjects;
   }
