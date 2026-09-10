@@ -321,14 +321,16 @@
 
 /* ---------- Toasts ---------- */
 
+/* Top-anchored: phone pages keep sheets and action rows at the bottom, so a
+   bottom toast would sit on top of the very button the user just pressed. */
 .hp-toasts {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: calc(var(--he-s-5) + env(safe-area-inset-bottom, 0px));
+  top: calc(var(--he-s-4) + env(safe-area-inset-top, 0px));
   z-index: 10002;
   display: flex;
-  flex-direction: column-reverse;
+  flex-direction: column;
   align-items: center;
   gap: var(--he-s-2);
   padding: 0 var(--he-s-4);
@@ -353,7 +355,7 @@
   font-weight: 500;
   line-height: 1.3;
   opacity: 0;
-  transform: translateY(12px) scale(0.98);
+  transform: translateY(-12px) scale(0.98);
   transition:
     opacity var(--he-dur-fast) var(--he-ease),
     transform var(--he-dur-fast) var(--he-ease);
@@ -366,7 +368,7 @@
 
 .hp-toast.is-out {
   opacity: 0;
-  transform: translateY(6px) scale(0.98);
+  transform: translateY(-6px) scale(0.98);
 }
 
 .hp-toast__icon {

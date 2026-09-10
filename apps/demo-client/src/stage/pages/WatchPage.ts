@@ -147,7 +147,8 @@ export class WatchPage {
         this.renderActions(actionsData.actions);
         this.setOffline(false);
       } catch (error) {
-        console.error('Polling error:', error);
+        // Log once per outage, not once per 2s tick.
+        if (!this.offline) console.warn('Watch polling failed, retrying:', error);
         this.setOffline(true);
       }
     };
