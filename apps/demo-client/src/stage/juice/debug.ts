@@ -1,7 +1,7 @@
 /**
  * Console helpers for demoing the juice layer without a live Operator.
  *
- *   HeistJuice.demo()                       // scripted 9-beat sequence, ends on an authenticated win
+ *   HeistJuice.demo()                       // scripted 10-beat sequence, ends on the authentic take
  *   HeistJuice.toast('success', 'Key acquired', 'by Raven')
  *   HeistJuice.examine('flower-arrangement', 'Something glints between the stems')
  *   HeistJuice.action({ player: 'Raven', action: 'take', target: 'gallery-a-key', result: 'Raven took the brass gallery key' })
@@ -84,25 +84,33 @@ export function installJuiceDebug(juice: StageJuice): () => void {
         result: 'Raven entered correct vault code'
       });
       await wait(4200);
-      api.action({
-        player: 'Examiner',
-        action: 'examine',
-        target: 'display-diamond',
-        result: 'Examined display-diamond: the facets are glass. A replica.'
-      });
-      await wait(3400);
+      // Rows below mirror what game-session.ts logs on the real twist path.
       api.action({
         player: 'Examiner',
         action: 'take',
         target: 'sunburst-diamond',
-        result: 'Examiner took sunburst-diamond'
+        result: 'Examiner lifted the sunburst-diamond from the pedestal. Objective apparently secured.'
       });
-      await wait(4000);
+      await wait(3600);
       api.action({
         player: 'Examiner',
-        action: 'authenticate',
-        target: 'sunburst-diamond',
-        result: 'Authentic Sunburst Diamond confirmed. Heist complete.'
+        action: 'take',
+        target: 'sunburst-diamond-authentic',
+        result: 'Examiner tried to take sunburst-diamond-authentic but it is still secured'
+      });
+      await wait(3000);
+      api.action({
+        player: 'Examiner',
+        action: 'unlock',
+        target: 'steel-shelves',
+        result: 'Examiner opened the shelf 12 transit case with the curator keycard'
+      });
+      await wait(3600);
+      api.action({
+        player: 'Examiner',
+        action: 'take',
+        target: 'sunburst-diamond-authentic',
+        result: 'Examiner secured the authentic Sunburst Diamond from the steel shelves. Heist complete.'
       });
     }
   };

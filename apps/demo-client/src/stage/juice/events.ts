@@ -21,8 +21,10 @@ export const STORY = {
   replica: /\breplica\b|\bfake\b|\bcounterfeit\b|\bforg(ed|ery)\b|not authentic|inauthentic|\bdecoy\b/i,
   /** Verified prize signals ("authentic" alone, never "not authentic"). */
   authentic: /\bauthentic(ated|ity)?\b/i,
-  /** Explicit finale wording Logic may log. */
-  complete: /heist\s*complete/i
+  /** Explicit finale wording Logic logs ("Heist complete.", puzzle id "heist-complete-authentic"). */
+  complete: /heist[\s-]*complete/i,
+  /** Attempt rows: something was tried and refused (still secured, no credential). */
+  refused: /\btried\b|still secured|without a|\bdenied\b|\brefus/i
 } as const;
 
 export type StoryBeat = 'replica' | 'authentic' | 'reveal' | null;
@@ -72,6 +74,21 @@ export function classifyAction(a: ActionLogEntry): JuiceEvent | null {
     !/unlocked|\bcorrect\b/.test(lower);
   if (rejected) {
     return { kind: 'code-rejected', tone: 'error', title: 'Code rejected', body: result, player, subject: target };
+  }
+
+  // Refused attempts ("tried to take sunburst-diamond-authentic but it is still
+  // secured", "tried the shelf 12 reader without a curator credential") must
+  // never read as a take or an unlock, or the authentic-diamond guard would
+  // light the finale ribbon early.
+  if ((action === 'take' || action === 'unlock') && STORY.refused.test(lower) && !/\bunlocked\b|\btook\b|\bsecured the\b/.test(lower)) {
+    return {
+      kind: 'code-rejected',
+      tone: 'error',
+      title: action === 'take' ? 'Still secured' : 'Access denied',
+      body: result,
+      player,
+      subject: target
+    };
   }
 
   // Story beats that cut across action types.
@@ -248,8 +265,17 @@ export function readFinaleFlags(state: StageStateLike): FinaleFlags {
 
   const flags: FinaleFlags = {};
 
+  // Logic's get_state ships heistComplete as 'authentic' | 'replica' | false:
+  // only the authentic stone counts as the win; the replica is the trap.
   const complete = pick('heistComplete') ?? pick('heist_complete') ?? pick('complete');
   if (typeof complete === 'boolean') flags.heistComplete = complete;
+  if (complete === 'authentic') {
+    flags.heistComplete = true;
+    flags.authentic = true;
+  } else if (complete === 'replica') {
+    flags.heistComplete = false;
+    flags.authentic = false;
+  }
 
   const authentic = pick('authentic') ?? pick('diamondAuthentic') ?? pick('isAuthentic');
   if (typeof authentic === 'boolean') flags.authentic = authentic;

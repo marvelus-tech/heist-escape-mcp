@@ -21,10 +21,9 @@ export interface InventoryItem {
 }
 
 /**
- * Subset of `/api/get_state` the juice layer cares about. The finale fields are
- * not shipped by the Worker yet; they are read defensively (see
- * `readFinaleFlags` in events.ts) so the ribbon lights up as soon as Logic
- * exposes them under any of the anticipated names.
+ * Subset of `/api/get_state` the juice layer cares about. Logic ships
+ * `heistComplete: 'authentic' | 'replica' | false`; the other finale shapes are
+ * read defensively (see `readFinaleFlags` in events.ts).
  */
 export interface StageStateLike {
   currentRoom?: number;
@@ -32,7 +31,7 @@ export interface StageStateLike {
   solvedPuzzles?: string[];
   inventory?: InventoryItem[];
   recentActions?: ActionLogEntry[];
-  heistComplete?: boolean;
+  heistComplete?: boolean | 'authentic' | 'replica';
   authentic?: boolean;
   diamondAuthentic?: boolean;
   outcome?: string;
