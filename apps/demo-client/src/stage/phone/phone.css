@@ -1,0 +1,332 @@
+/*
+ * Phone kit styles: toasts + clue sheet for phone role pages.
+ *
+ * Dark frosted glass (the concept-still panel look) sitting over the light
+ * pearl page. Gold for titles / success, cyan for interact accents, slate for
+ * quiet errors. All tokens come from theme/tokens.css (`--he-*`).
+ */
+
+.he-phone-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  pointer-events: none;
+  font-family: var(--he-font-ui);
+}
+
+/* ---------- Toasts ---------- */
+
+.he-toasts {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(440px, 92vw);
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.he-toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--he-s-3);
+  width: 100%;
+  padding: var(--he-s-3) var(--he-s-4);
+  border-radius: var(--he-r-md);
+  background: rgba(31, 27, 21, 0.82);
+  -webkit-backdrop-filter: blur(var(--he-glass-blur)) saturate(1.2);
+  backdrop-filter: blur(var(--he-glass-blur)) saturate(1.2);
+  border: 1px solid rgba(255, 253, 248, 0.12);
+  box-shadow: 0 14px 36px rgba(20, 14, 4, 0.35);
+  color: var(--he-pearl-1);
+  opacity: 0;
+  transform: translateY(-14px) scale(0.98);
+  transition: opacity var(--he-dur) var(--he-ease), transform var(--he-dur) var(--he-ease);
+  cursor: pointer;
+}
+
+.he-toast.is-in {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.he-toast.is-out {
+  opacity: 0;
+  transform: translateY(-10px) scale(0.98);
+  transition-duration: var(--he-dur-fast);
+}
+
+.he-toast__icon {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--he-ink-900);
+}
+
+.he-toast__text {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.he-toast__title {
+  font-weight: 600;
+  font-size: 0.95rem;
+  line-height: 1.3;
+}
+
+.he-toast__body {
+  margin-top: 2px;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--he-pearl-3);
+  white-space: pre-wrap;
+}
+
+.he-toast--success {
+  border-color: var(--he-hairline-gold);
+}
+.he-toast--success .he-toast__icon {
+  background: linear-gradient(160deg, var(--he-gold-200), var(--he-gold-500) 55%, var(--he-gold-700));
+  box-shadow: 0 0 0 3px rgba(201, 162, 74, 0.22);
+}
+.he-toast--success .he-toast__title {
+  color: var(--he-gold-200);
+}
+
+.he-toast--info {
+  border-color: var(--he-hairline-cyan);
+}
+.he-toast--info .he-toast__icon {
+  background: linear-gradient(160deg, var(--he-cyan-300), var(--he-cyan-500) 60%, var(--he-cyan-700));
+}
+.he-toast--info .he-toast__title {
+  color: var(--he-cyan-300);
+}
+
+.he-toast--error {
+  border-color: rgba(168, 159, 143, 0.35);
+}
+.he-toast--error .he-toast__icon {
+  background: var(--he-ink-300);
+}
+.he-toast--error .he-toast__title {
+  color: var(--he-pearl-2);
+}
+
+.he-toast--warning {
+  border-color: rgba(230, 201, 130, 0.4);
+}
+.he-toast--warning .he-toast__icon {
+  background: var(--he-gold-300);
+}
+.he-toast--warning .he-toast__title {
+  color: var(--he-gold-300);
+}
+
+/* ---------- Clue sheet ---------- */
+
+.he-sheet-root {
+  position: absolute;
+  inset: 0;
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.he-sheet__scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(20, 14, 4, 0.45);
+  opacity: 0;
+  transition: opacity var(--he-dur) var(--he-ease);
+}
+
+.he-sheet {
+  position: relative;
+  width: min(560px, 100%);
+  max-height: min(82vh, 82dvh);
+  display: flex;
+  flex-direction: column;
+  padding: var(--he-s-2) var(--he-s-4) calc(var(--he-s-4) + env(safe-area-inset-bottom, 0px));
+  border-radius: var(--he-r-lg) var(--he-r-lg) 0 0;
+  background: linear-gradient(180deg, rgba(38, 33, 26, 0.92), rgba(24, 21, 16, 0.96));
+  -webkit-backdrop-filter: blur(var(--he-glass-blur)) saturate(1.2);
+  backdrop-filter: blur(var(--he-glass-blur)) saturate(1.2);
+  border: 1px solid var(--he-hairline-cyan);
+  border-bottom: none;
+  box-shadow: 0 -18px 48px rgba(20, 14, 4, 0.45), 0 0 0 1px rgba(79, 184, 208, 0.12);
+  color: var(--he-pearl-1);
+  transform: translateY(100%);
+  transition: transform var(--he-dur) var(--he-ease);
+}
+
+@media (min-width: 640px) {
+  .he-sheet-root {
+    align-items: center;
+    padding: var(--he-s-5);
+  }
+  .he-sheet {
+    border-radius: var(--he-r-lg);
+    border-bottom: 1px solid var(--he-hairline-cyan);
+    transform: translateY(24px);
+    opacity: 0;
+    transition: transform var(--he-dur) var(--he-ease), opacity var(--he-dur) var(--he-ease);
+  }
+  .he-sheet-root.is-in .he-sheet {
+    opacity: 1;
+  }
+  .he-sheet__grip {
+    display: none;
+  }
+}
+
+.he-sheet-root.is-in .he-sheet__scrim {
+  opacity: 1;
+}
+.he-sheet-root.is-in .he-sheet {
+  transform: translateY(0);
+}
+.he-sheet-root.is-out .he-sheet__scrim {
+  opacity: 0;
+}
+.he-sheet-root.is-out .he-sheet {
+  transform: translateY(100%);
+  opacity: 0;
+}
+
+.he-sheet__grip {
+  width: 40px;
+  height: 4px;
+  margin: 0 auto var(--he-s-3);
+  border-radius: var(--he-r-pill);
+  background: rgba(255, 253, 248, 0.25);
+}
+
+.he-sheet__head {
+  display: flex;
+  align-items: center;
+  gap: var(--he-s-3);
+  padding-bottom: var(--he-s-3);
+  border-bottom: 1px solid rgba(201, 162, 74, 0.35);
+}
+
+.he-sheet__glyph {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-size: 1.15rem;
+  color: var(--he-ink-900);
+  background: radial-gradient(circle at 30% 30%, var(--he-gold-200), var(--he-gold-500) 60%, var(--he-gold-700));
+  box-shadow: 0 0 18px rgba(201, 162, 74, 0.35);
+}
+
+.he-sheet__head-text {
+  min-width: 0;
+}
+
+.he-sheet__eyebrow {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: var(--he-track-caps);
+  text-transform: uppercase;
+  color: var(--he-cyan-300);
+}
+
+.he-sheet__title {
+  margin: 2px 0 0;
+  font-family: var(--he-font-display);
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--he-gold-200);
+  overflow-wrap: anywhere;
+}
+
+.he-sheet__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: var(--he-s-4) 2px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(201, 162, 74, 0.5) transparent;
+}
+
+.he-sheet__text {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.55;
+  color: var(--he-pearl-1);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.he-sheet__actions {
+  display: flex;
+  gap: var(--he-s-3);
+  padding-top: var(--he-s-3);
+  border-top: 1px solid rgba(255, 253, 248, 0.08);
+}
+
+.he-sheet__btn {
+  flex: 1 1 0;
+  min-height: 48px;
+  padding: var(--he-s-3) var(--he-s-4);
+  border-radius: var(--he-r-sm);
+  font-family: var(--he-font-ui);
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: transform var(--he-dur-fast) var(--he-ease), box-shadow var(--he-dur-fast) var(--he-ease),
+    background var(--he-dur-fast) var(--he-ease);
+}
+
+.he-sheet__btn:active {
+  transform: translateY(1px);
+}
+
+.he-sheet__btn--done {
+  border: none;
+  color: var(--he-ink-900);
+  background: linear-gradient(135deg, var(--he-gold-200), var(--he-gold-500) 60%, var(--he-gold-700));
+  box-shadow: 0 6px 18px rgba(201, 162, 74, 0.3);
+}
+
+.he-sheet__btn--pin {
+  border: 1px solid var(--he-hairline-cyan);
+  color: var(--he-cyan-300);
+  background: rgba(79, 184, 208, 0.1);
+}
+
+.he-sheet__btn--pin.is-pinned {
+  color: var(--he-pearl-3);
+  border-color: rgba(255, 253, 248, 0.15);
+  background: rgba(255, 253, 248, 0.06);
+  cursor: default;
+}
+
+.he-sheet__btn:focus-visible {
+  outline: none;
+  box-shadow: var(--he-glow-cyan);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .he-toast,
+  .he-sheet,
+  .he-sheet__scrim {
+    transition: none;
+  }
+}
