@@ -1,232 +1,203 @@
-# Heist Escape - Complete Solution Guide
+# Heist Escape: Solution Guide
 
-**⚠️ SPOILER WARNING: This guide contains all puzzle solutions. For operators only!**
+> **SPOILER WARNING.** This file contains every answer, the twist, and the win condition. For hosts and operators only. Do not put it on the Stage screen.
+
+Canonical story, ids and clue text live in [`docs/redesign/COMBINED-PROGRAM.md`](redesign/COMBINED-PROGRAM.md). This guide is the walkthrough view of that program.
 
 ---
 
-## Game Overview
+## The story in one paragraph (SPOILER)
 
-The Heist Escape is a 5-room cooperative museum heist requiring 2 players to work together. Players share inventory and must communicate to solve puzzles and reach the vault.
+A curator, Dr. Elena Bright, has hired an outside "security red-team" to audit the museum before the *Diamonds Through the Ages* gala. That is the cover. Privately she believes trustee and lender Marcus Wexler ("M") has swapped the Sunburst Diamond for a display replica. Your job is to reach the vault and **verify which stone is real**. The one on the pedestal is the fake. The authentic Sunburst is in the curator hold on the steel shelves, and only Elena's keycard opens it.
 
-**Completion Time:** 30-45 minutes (full game) | 5-10 minutes (pitch path)
+## Who knows what (Examiner vs Operator)
+
+| | Examiner (agent, via MCP) | Operator (human, via phone) |
+|---|---|---|
+| Story they are told | Cover story **plus** the classified note: Elena suspects M., verify authenticity, trust the shelves over the pedestal (`get_briefing`) | Cover story only: pre-gala red-team audit |
+| What they can see | Placards, blueprints, the catalog card, everything `examine_object` returns | Drawer contents (schedule, audit notebook, loan clause) and code results, shown as phone alerts |
+| What they do | Take items, unlock and open doors, pull the painting, examine | Open drawers, enter codes |
+| Learns the twist | From the briefing and the 7734 card, before the vault | Live, on the Stage, when the pedestal is examined |
+
+Neither role can finish alone: the digits are split across drawers (Operator) and placards (Examiner), the Operator enters the codes, and the Examiner takes the items.
+
+---
+
+## Answers at a glance (SPOILER)
+
+| Puzzle | Answer | Where it comes from |
+|---|---|---|
+| Gallery A door | `gallery-a-key`, hidden in `flower-arrangement` | Lobby |
+| Archives door | same `gallery-a-key` | Gallery A |
+| Card catalog drawer | `7734` | Visitor log in the Lobby |
+| Vault Access door | `pull` the `hidden-painting` | Archives |
+| Vault keypad | `3891` | 3 sweeps, 8 loan pieces, clause 9, Sub-Level 1 |
+| Win | `curator-keycard` (room 4) + `steel-shelves` (room 5) -> take `sunburst-diamond` | Vault |
+
+Assembly rule, in-world: the exhibition code is the four "house figures" in walking order, Lobby first.
 
 ---
 
 ## Room 1: Museum Lobby
 
-### Objective
-Find the first vault code digit and the key to Gallery A.
+**Surface story (the Lobby lie):** the poster board says the cameras are offline for scheduled maintenance, and the notebook in the bottom drawer is a "routine pre-gala code audit". Both are M.'s and Elena's covers respectively. Nothing here is what it claims to be.
 
-### Puzzle 1: Find Gallery A Key
-1. Examine `flower-arrangement`
-2. Use `use_item` with action `take` to collect `gallery-a-key`
-3. Key is added to shared inventory
+### Digit 1 = 3 (Operator)
 
-### Puzzle 2: First Vault Digit
-1. Open drawer: `open_drawer` with `reception-desk-bottom`
-2. Read contents: "Code audit: Room 1 = **3**"
-3. Note: This is digit 1 of 4 for the vault code
+1. `open_drawer reception-desk-middle`
+2. Staff schedule for gala week: "Night security sweeps: **3** per night (22:00, 01:00, 04:00). Cameras offline for maintenance until gala night, per M.W."
+3. The sweep count is the Lobby figure.
 
-### Hidden Clues
-- **poster-board**: Assembly rule reminder ("ORDER BY ROOM NUMBER")
-- **visitor-log**: References catalog #7734 (needed in Room 3)
-- **phone Post-it**: Hint about key location
+### Assembly rule, part one (Operator)
 
-### Exit Strategy
-- Unlock: `use_item` with itemName `gallery-a-key`, action `unlock`, target `gallery-a`
-- Move: `use_item` with action `open`, target `gallery-a` (moves the team to Room 2)
-- Shortcut: `open` on a locked door works in one step if the team already holds the matching key
+1. `open_drawer reception-desk-bottom`
+2. Audit notebook: "Exhibition code is rebuilt from four house figures in walking order: Lobby, Gallery A, Archives, Vault Access. Lobby figure: the nightly sweeps. Gallery A figure: the loan. Remaining figures: see curator."
+3. "See curator" points at catalog card 7734 in the Archives.
 
-**Room 1 Digit: 3**
+### Catalog code (Examiner)
+
+- `examine_object visitor-log`: "E. Bright, Room 3-A, Catalog #**7734**, pull for gala review". Remember it for room 3.
+
+### Key and exit (Examiner)
+
+1. `examine_object flower-arrangement` reveals a brass key tagged "Gallery A Access".
+2. `use_item` itemName `gallery-a-key`, action `take`. It lands in shared inventory.
+3. `use_item` action `open`, target `gallery-a`. With the key in inventory this unlocks and moves the team in one step. (`unlock` then `open` also works.)
+
+Extras: `poster-board` (camera notice), Phone Post-it ("Gallery A key in the lobby flowers, per usual. E."), `reception-desk-top` (business cards, flavor).
+
+**Carry forward:** `3`, `7734`, `gallery-a-key`.
 
 ---
 
 ## Room 2: Gallery A - Renaissance Wing
 
-### Objective
-Find the second vault code digit.
+### Digit 2 = 8 (Examiner)
 
-### Puzzle: Display Case Clue
-1. Examine `display-case-west`
-2. Read the note card: "The vault code digit for Room 2 is: **8**"
+1. `examine_object display-case-west`
+2. Placard: "Renaissance Jewelry Collection. Loaned by the Wexler Foundation. **8** pieces on display. Please see curator for Vault storage protocols."
+3. The loan count is the Gallery A figure (the notebook said "Gallery A figure: the loan").
 
-### Additional Content
-- **painting-landscape**: Atmospheric flavor
-- **velvet-rope**: Standard museum barrier
-- **archives-door**: Locked; the brass `gallery-a-key` from Room 1 opens it too
+### Exit (Examiner)
 
-### Exit Strategy
-- `use_item` with action `open`, target `archives` (or `archives-door`) while holding `gallery-a-key`
-- Moves the team to Room 3
+- `use_item` action `open`, target `archives` (or `archives-door`). The brass key from the flowers fits this door too.
 
-**Room 2 Digit: 8**
+Red herrings: `painting-landscape` (Belmont Estate, 1973), `velvet-rope`.
+
+**Carry forward:** `3 8`.
 
 ---
 
 ## Room 3: Archives Room
 
-### Objective
-Find the third vault code digit and access the catalog drawer.
+### Elena's reveal + assembly confirmation (Operator enters, Examiner reads)
 
-### Puzzle 1: Filing Cabinet Digit
-1. Open drawer: `open_drawer` with `filing-j-l`
-2. Contents reveal: "Vault code digit for Room 3: **9**"
+1. Operator: `enter_code` code `7734`, target `card-catalog`. The drawer `card-catalog-7734` unlocks and its card is read out.
+2. Card 7734, front: "Sunburst Diamond, 45.2 ct, fancy vivid yellow."
+3. Back, in Elena's hand: "If you are reading this, M. has already asked for the display copy two weeks early. **Do not trust the pedestal.** My keycard opens the curator hold on the shelves. The code is the house figures in walking order, Lobby first: **sweeps, loan pieces, the clause, the level.** E.B."
+4. This confirms the four facts and their order without handing over digits. `open_drawer card-catalog-7734` re-reads it later.
 
-### Puzzle 2: Card Catalog Access
-1. Remember visitor log from Room 1: catalog #**7734**
-2. Use `enter_code` with code `7734` and target `card-catalog`
-3. Drawer unlocks revealing: "Vault exhibition code: **3891**"
-4. This is the COMPLETE 4-digit vault code (assembled from all 4 rooms)
-5. `open_drawer` with `card-catalog-7734` now succeeds (it stays locked until the code is entered)
+### Digit 3 = 9 (Operator)
 
-### Hidden Content
-- **hidden-painting**: Conceals vault access door
-- **desk-lamp**: Personal touch, no functional purpose
+1. `open_drawer filing-j-l`
+2. Wexler Foundation loan agreement, "Clause **9**: the Foundation may substitute a certified display replica for any insured piece without notice." Elena's sticky: "Clause 9. This is how he would do it. E.B."
+3. The clause number is the Archives figure, and it tells you how the swap was done.
 
-### Exit Strategy
-- `use_item` with itemName `hidden-painting`, action `pull` reveals and unlocks `vault-access`
-- `use_item` with action `open`, target `vault-access` moves the team to Room 4
+### Exit (Examiner)
 
-**Room 3 Digit: 9**
+1. `use_item` itemName `hidden-painting`, action `pull` (also accepts `press`, `use`, `open`). The seascape swings aside and `vault-access` is revealed and unlocked.
+2. `use_item` action `open`, target `vault-access`.
+
+Red herring: `desk-lamp` ("To Elena, For Late Nights - M"). Flavor, but it does tell you M. and Elena are close.
+
+**Carry forward:** `3 8 9`, and: pedestal bad, shelves good, get Elena's keycard.
 
 ---
 
 ## Room 4: Vault Access Corridor
 
-### Objective
-Find the fourth vault code digit and enter the complete code.
+### Digit 4 = 1 (Examiner)
 
-### Puzzle 1: Blueprint Digit
-1. Examine `blueprint-frame`
-2. Read fine print: "Vault code digit for Room 4: **1**"
+1. `examine_object blueprint-frame`
+2. Floor plan marks the Vault and this corridor as "Sub-Level **1** (B1)". The level is the last figure.
 
-### Puzzle 2: Vault Keypad
-1. Assemble the code from all 4 rooms:
-   - Room 1: **3**
-   - Room 2: **8**
-   - Room 3: **9**
-   - Room 4: **1**
-2. Combined code: **3891**
-3. Use `enter_code` with code `3891` and target `vault-keypad`
-4. Success message: Vault unlocks and players automatically move to Room 5
+### Curator keycard (Examiner) - DO THIS BEFORE THE CODE
 
-### Additional Objects
-- **maintenance-locker**: Contains curator keycard (alternate path clue)
+1. `examine_object maintenance-locker`: cleaning supplies, a flashlight, and a lanyard keycard "Curator: Dr. Elena Bright".
+2. `use_item` itemName `curator-keycard`, action `take`.
 
-**Room 4 Digit: 1**
-**Complete Vault Code: 3891**
+> **Sequencing trap.** A correct keypad code moves the whole team into the Vault, and the Vault has no exits. If you punch `3891` without the keycard you cannot come back for it, and the authentic stone stays locked. Take the keycard first.
+
+### Keypad (Operator)
+
+1. Walking order: sweeps `3`, loan pieces `8`, clause `9`, level `1`.
+2. `enter_code` code `3891`, target `vault-keypad`.
+3. "BEEP BEEP BEEP" success message, `vault` unlocks, the team is moved to room 5 automatically.
+
+**Carry forward:** `curator-keycard`.
 
 ---
 
 ## Room 5: The Vault
 
-### Objective
-Claim the Sunburst Diamond and complete the heist.
+### The twist (Examiner)
 
-### Final Puzzle: Claim the Prize
-1. Examine `sunburst-diamond`
-2. Use `use_item` with action `take` on `sunburst-diamond`
-3. **HEIST COMPLETE!**
+1. `examine_object pedestal-diamond` (listed as "The Sunburst Diamond on a pedestal").
+2. Under the glass the girdle carries a laser inscription: **"WF DISPLAY COPY"**. Wexler Foundation. It is the replica.
+3. It is not takeable. Any `take` attempt just returns the inscription. Elena was right.
 
-### Victory Conditions
-- Diamond successfully taken
-- Action log shows completion
-- Both players see victory state
+### The authentic stone (Examiner, needs the keycard)
 
----
+1. `examine_object steel-shelves`. One case is tagged "Curator hold - E.B." with a keycard reader. With `curator-keycard` in inventory the reader accepts it and the authentic Sunburst Diamond is revealed.
+2. `use_item` itemName `sunburst-diamond`, action `take`.
+3. **Authentic Sunburst secured. Heist complete.** Inventory shows `sunburst-diamond`, the Stage shows the climax ribbon.
 
-## Cooperative Mechanics
+Without the keycard, `steel-shelves` only reports the locked case and the reader. That is the failure state to avoid.
 
-### Shared Inventory
-- Any item picked up by one player is visible to all
-- Use `get_inventory` to see team items
-- Examples: `gallery-a-key`, `sunburst-diamond`
-
-### Roles (Optional)
-1. **Examiner**: Reads documents, examines objects in detail
-2. **Operator**: Opens drawers, enters codes, takes items
-
-Roles are soft suggestions; both players can use all tools.
-
-### Communication is Key
-- Use `get_recent_actions` to see teammate's moves
-- Action log shows all discoveries
-- Progressive hints available via `get_hints` if stuck
+Red herring: `environmental-controls`.
 
 ---
 
-## Red Herrings
+## Speedrun path (5 to 10 minutes)
 
-These objects are atmospheric but don't contain puzzle solutions:
-- **velvet-rope** (Room 2)
-- **painting-landscape** (Room 2)
-- **desk-lamp** (Room 3)
-- **environmental-controls** (Room 5)
-- **steel-shelves** (Room 5)
+```
+R1  open_drawer reception-desk-middle (3) | open_drawer reception-desk-bottom (order)
+    examine visitor-log (7734) | examine flower-arrangement | take gallery-a-key | open gallery-a
+R2  examine display-case-west (8) | open archives
+R3  enter_code 7734 @card-catalog | open_drawer filing-j-l (9) | pull hidden-painting | open vault-access
+R4  examine blueprint-frame (1) | examine maintenance-locker | take curator-keycard | enter_code 3891 @vault-keypad
+R5  examine pedestal-diamond (replica) | examine steel-shelves | take sunburst-diamond
+```
 
----
-
-## Progressive Hints by Room
-
-### Room 1
-1. "The reception area often has useful information..."
-2. "The poster board has a note about an assembly rule..."
-3. "Look for digit clues in each room. The bottom desk drawer..."
-
-### Room 2
-1. "The archives door needs a key..."
-2. "Display cases often have information cards..."
-3. "The western display case has a hidden note card..."
-
-### Room 3
-1. "The visitor log mentioned catalog #7734..."
-2. "The card catalog has a drawer labeled 7734..."
-3. "Filing cabinet drawer J-L contains another digit..."
-
-### Room 4
-1. "You need a 4-digit code for the keypad..."
-2. "The blueprint on the wall has text worth reading..."
-3. "Combine the digits in room order: 3-8-9-1..."
-
-### Room 5
-1. "You've made it to the vault!..."
-2. "Simply examine and take the Sunburst Diamond..."
-3. "Victory is yours!..."
+Twenty tool calls, no backtracking.
 
 ---
 
-## Speedrun Strategy (5-10 minutes)
+## Progressive hints (three per room)
 
-**Optimal Path:**
-1. Room 1: Grab key, check desk bottom drawer (digit 3), `open` `gallery-a`
-2. Room 2: Examine display case (digit 8), `open` `archives`
-3. Room 3: Open J-L drawer (digit 9), enter 7734 at catalog, `pull` `hidden-painting`, `open` `vault-access`
-4. Room 4: Check blueprint (digit 1), enter 3891 at keypad (auto-moves to Room 5)
-5. Room 5: Take diamond
+Hints name the object holding a fact; they never state a digit.
 
-**No backtracking required if you remember digits!**
-
----
-
-## Common Mistakes
-
-1. **Forgetting to record digits**: Write them down as you find them
-2. **Wrong code order**: Must be Room 1→2→3→4 (3891, not 1893)
-3. **Missing catalog number**: Check visitor log in Room 1 for #7734
-4. **Not sharing info**: Cooperative play requires communication!
+- **Room 1:** the desk drawers are worth a look / the schedule and the audit notebook both mention how the code is built / the flowers hide the Gallery A key, and the visitor log has a catalog number you will need later.
+- **Room 2:** the Archives door takes the same brass key / read the placards, not just the jewelry / the western case placard says how many pieces Wexler lent.
+- **Room 3:** the lobby log said Catalog #7734, try it on the card catalog / Elena's card explains the order of the four figures / the J-L drawer holds the Wexler loan agreement, and Elena flagged one clause.
+- **Room 4:** four figures, walking order, Lobby first / the blueprint says what level you are on / check the locker before you touch the keypad; the vault is one-way.
+- **Room 5:** look closely at the stone on the pedestal / Elena said trust the shelves / the curator keycard opens the hold on the steel shelves.
 
 ---
 
-## Technical Notes for Operators
+## Common mistakes
 
-- All puzzle solutions stored server-side (Durable Object + D1)
-- Codes validated via `enter_code` tool
-- No solutions in client JavaScript bundle
-- Session state persists across disconnects
-- Multiple sessions can run simultaneously
+1. **Entering `3891` before taking the keycard.** One-way door. Restart the session.
+2. **Taking the pedestal stone as the win.** It refuses, by design. The inscription is the tell.
+3. **Wrong order.** Walking order is Lobby, Gallery A, Archives, Vault Access: `3891`, not `1983`.
+4. **Skipping 7734.** You can brute-force the digits from the four facts, but the card is where the story lands and where the keycard is named.
+5. **Operator entering codes with no target.** The phone requires a target (`card-catalog` or `vault-keypad`).
 
 ---
 
-**End of Solution Guide**
+## Technical notes
 
-Good luck, and may your heist be swift and silent! 💎
+- All answers are validated server-side (Durable Object + D1); nothing in the client bundle spoils the game.
+- Codes go through `enter_code`; doors through `use_item` with `unlock`/`open`; hidden items (`gallery-a-key`, `curator-keycard`, `sunburst-diamond`) are found with `examine_object` and taken with `use_item ... take`.
+- Session state survives disconnects. Rejoining with the same `sessionId` and player name resumes.
+- Many sessions can run at once; each Stage "Start Demo" mints a new `demo-XXXX` id.
