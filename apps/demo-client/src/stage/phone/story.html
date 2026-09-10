@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Phone UI kit story - Heist Escape</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap">
+  <style>
+    /* Story chrome only. Stands in for a dark museum backdrop so the glass reads. */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      font-family: 'Inter', system-ui, sans-serif;
+      color: #f3eee2;
+      background:
+        radial-gradient(80% 60% at 50% 0%, rgba(201, 162, 74, 0.22), transparent 70%),
+        radial-gradient(60% 50% at 90% 100%, rgba(79, 184, 208, 0.16), transparent 70%),
+        #0b0e13;
+      padding: max(24px, env(safe-area-inset-top)) 20px 48px;
+    }
+    h1 { font-family: 'Cinzel', serif; font-size: 1.4rem; color: #e6c982; letter-spacing: 0.04em; }
+    p.lede { margin-top: 6px; color: rgba(243, 238, 226, 0.68); font-size: 0.95rem; }
+    .grid { display: grid; gap: 10px; margin-top: 24px; }
+    .grid button {
+      min-height: 48px;
+      padding: 0 18px;
+      border-radius: 12px;
+      border: 1px solid rgba(243, 238, 226, 0.14);
+      background: rgba(18, 22, 30, 0.8);
+      color: inherit;
+      font: 600 1rem 'Inter', system-ui, sans-serif;
+      text-align: left;
+      cursor: pointer;
+    }
+    .grid button:active { transform: scale(0.98); }
+    h2 { margin-top: 28px; font-size: 0.75rem; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(243, 238, 226, 0.5); }
+    #story-log { margin-top: 10px; list-style: none; font-size: 0.9rem; color: rgba(243, 238, 226, 0.7); }
+    #story-log li { padding: 6px 0; border-bottom: 1px solid rgba(243, 238, 226, 0.08); }
+    /* Filler so the page can scroll: proves the body lock while a sheet is open. */
+    .filler { height: 120vh; }
+  </style>
+</head>
+<body>
+  <h1>Phone UI kit</h1>
+  <p class="lede">ClueSheet and Toast, no browser alerts. Resize below 640px for the bottom-sheet layout.</p>
+
+  <div class="grid">
+    <button data-story="drawer">Drawer clue (long Elena note, with Pin to Log)</button>
+    <button data-story="examine">Examine clue (cyan accent)</button>
+    <button data-story="short">Short result sheet</button>
+    <button data-story="success">Success toast</button>
+    <button data-story="info">Info toast</button>
+    <button data-story="error">Error toast</button>
+    <button data-story="burst">Burst of 5 toasts (stack caps at 3)</button>
+  </div>
+
+  <h2>Story log</h2>
+  <ul id="story-log"></ul>
+  <div class="filler"></div>
+
+  <script type="module" src="./story.ts"></script>
+</body>
+</html>
