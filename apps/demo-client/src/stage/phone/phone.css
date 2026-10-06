@@ -392,3 +392,50 @@
     transition: none;
   }
 }
+
+/* ---------- Merged-kit extras (OP-B / OP-C API folded into OP-A) ---------- */
+
+/* Magenta accent: Watch seat help / info sheets */
+.hp-sheet-wrap--magenta {
+  --hp-accent: var(--he-magenta-100, #fbe7f2);
+  --hp-accent-hairline: var(--he-hairline-magenta, rgba(217, 104, 159, 0.55));
+}
+
+.hp-sheet-wrap--magenta .hp-sheet {
+  border-color: var(--hp-accent-hairline);
+}
+
+/* Copyable monospace block, e.g. the Examiner get_briefing tool call */
+.hp-sheet__code {
+  margin: 0.9em 0 0;
+  padding: var(--hp-s-4);
+  border-radius: var(--hp-r-sm);
+  border: 1px solid var(--hp-hairline-cyan);
+  background: rgba(6, 12, 20, 0.7);
+  color: var(--he-cyan-100, #e6f6fa);
+  font-family: var(--he-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  -webkit-user-select: all;
+  user-select: all;
+}
+
+.hp-sheet__actions {
+  flex-wrap: wrap;
+}
+
+/* Warning toast: amber, for validation nags ("Enter a code first") */
+.hp-toast--warning {
+  border-color: rgba(240, 196, 110, 0.55);
+}
+
+.hp-toast--warning .hp-toast__icon {
+  color: var(--hp-ink-0);
+  background: #f0c46e;
+}
+
+.hp-toast--warning .hp-toast__title {
+  color: #f7dca6;
+}

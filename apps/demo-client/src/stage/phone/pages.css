@@ -1,0 +1,190 @@
+/*
+ * Heist Escape - phone page primitives (Examiner / Watch page shell).
+ *
+ * Ported from OP-C (#14) when the three phone kits were merged into one.
+ * The overlay kit (sheet, toasts) lives in phone.css + tokens.css and is
+ * scoped to `.hp-layer`; these page-level primitives are scoped to
+ * `.hp-page` so the two never fight over the shared `hp-` class names.
+ */
+
+
+.hp-page {
+  --hp-bg-0: #0b1017;
+  --hp-bg-1: #121b28;
+  --hp-bg-2: #1a2533;
+  --hp-glass: rgba(20, 29, 42, 0.66);
+  --hp-glass-strong: rgba(17, 25, 37, 0.94);
+  --hp-hairline: rgba(255, 255, 255, 0.09);
+  --hp-text: #f3efe6;
+  --hp-text-dim: #b9b2a4;
+  --hp-text-mute: #7f7869;
+  --hp-shadow: 0 14px 40px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --hp-shadow-soft: 0 6px 20px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+/* ---------- Page shell ---------- */
+
+.hp-page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  color: var(--hp-text);
+  font-family: var(--he-font-ui);
+  background:
+    radial-gradient(90% 60% at 50% -10%, rgba(201, 162, 74, 0.16) 0%, transparent 60%),
+    radial-gradient(70% 50% at 100% 100%, rgba(79, 184, 208, 0.1) 0%, transparent 60%),
+    linear-gradient(180deg, var(--hp-bg-1) 0%, var(--hp-bg-0) 100%);
+  -webkit-font-smoothing: antialiased;
+}
+
+.hp-page .hp-glass {
+  background: var(--hp-glass);
+  -webkit-backdrop-filter: blur(18px) saturate(1.15);
+  backdrop-filter: blur(18px) saturate(1.15);
+  border: 1px solid var(--hp-hairline);
+  border-radius: var(--he-r-md);
+  box-shadow: var(--hp-shadow-soft);
+}
+
+.hp-page .hp-glass--gold { border-color: var(--he-hairline-gold); }
+.hp-page .hp-glass--cyan { border-color: var(--he-hairline-cyan); }
+.hp-page .hp-glass--magenta { border-color: var(--he-hairline-magenta); }
+
+.hp-page .hp-eyebrow {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: var(--he-track-caps);
+  text-transform: uppercase;
+  color: var(--he-gold-300);
+}
+
+.hp-page .hp-eyebrow--cyan { color: var(--he-cyan-300); }
+.hp-page .hp-eyebrow--magenta { color: var(--he-magenta-300); }
+
+.hp-page .hp-title {
+  font-family: var(--he-font-display);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.1;
+}
+
+.hp-page .hp-muted { color: var(--hp-text-dim); }
+
+/* Tappable session chip (tap = copy) */
+.hp-page .hp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--he-s-2);
+  padding: 6px 12px;
+  border-radius: var(--he-r-pill);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--he-hairline-gold);
+  color: var(--hp-text-dim);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background var(--he-dur-fast) var(--he-ease);
+}
+
+.hp-page .hp-chip code {
+  font-family: var(--he-font-mono);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--he-gold-200);
+}
+
+.hp-page .hp-chip:active { background: rgba(201, 162, 74, 0.14); }
+
+/* Buttons */
+.hp-page .hp-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--he-s-2);
+  min-height: 44px;
+  padding: 0 var(--he-s-5);
+  border-radius: var(--he-r-sm);
+  border: 1px solid var(--hp-hairline);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--hp-text);
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    transform var(--he-dur-fast) var(--he-ease),
+    background var(--he-dur-fast) var(--he-ease),
+    box-shadow var(--he-dur-fast) var(--he-ease);
+}
+
+.hp-page .hp-btn:active { transform: translateY(1px); }
+
+.hp-page .hp-btn--primary {
+  border-color: var(--he-gold-500);
+  background: linear-gradient(180deg, var(--he-gold-300) 0%, var(--he-gold-500) 100%);
+  color: var(--he-gold-900);
+  box-shadow: 0 6px 18px rgba(201, 162, 74, 0.25);
+}
+
+.hp-page .hp-btn--primary:hover { box-shadow: var(--he-glow-gold); }
+
+.hp-page .hp-btn--cyan {
+  border-color: var(--he-hairline-cyan);
+  color: var(--he-cyan-300);
+}
+
+.hp-page .hp-btn--cyan:hover { box-shadow: var(--he-glow-cyan); }
+
+.hp-page .hp-btn--ghost {
+  background: transparent;
+  color: var(--hp-text-dim);
+}
+
+.hp-page .hp-btn--ghost:hover { color: var(--hp-text); background: rgba(255, 255, 255, 0.05); }
+
+/* Mono block for tool calls / config */
+.hp-page .hp-code {
+  margin: 0;
+  padding: var(--he-s-4);
+  border-radius: var(--he-r-sm);
+  border: 1px solid var(--he-hairline-cyan);
+  background: rgba(6, 12, 20, 0.7);
+  color: var(--he-cyan-100);
+  font-family: var(--he-font-mono);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  overflow-x: auto;
+  white-space: pre;
+  -webkit-user-select: all;
+  user-select: all;
+}
+
+/* Live / offline pill */
+.hp-page .hp-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: var(--he-track-caps);
+  text-transform: uppercase;
+  color: var(--he-gold-300);
+}
+
+.hp-page .hp-live.is-offline { color: var(--hp-text-mute); }
+.hp-page .hp-live.is-offline .he-live-dot {
+  background: var(--hp-text-mute);
+  box-shadow: none;
+  animation: none;
+}
+
+.hp-page .hp-empty {
+  padding: var(--he-s-5) var(--he-s-4);
+  text-align: center;
+  color: var(--hp-text-mute);
+  font-style: italic;
+  font-size: 0.9rem;
+}
+

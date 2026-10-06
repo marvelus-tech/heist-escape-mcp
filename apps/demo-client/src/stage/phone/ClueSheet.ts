@@ -13,18 +13,39 @@
 
 import { el, getLayer, nextFrame, wait } from './layer';
 
-export type ClueAccent = 'gold' | 'cyan';
+export type ClueAccent = 'gold' | 'cyan' | 'magenta';
+/** Alias kept for pages written against the OP-C kit. */
+export type SheetTone = ClueAccent;
+
+export interface ClueSheetAction {
+  label: string;
+  /** Receives `close` so the action can decide whether to dismiss. */
+  onClick?: (close: () => void) => void | Promise<void>;
+  primary?: boolean;
+  /** Dismiss after onClick. Defaults to true when no onClick is given. */
+  closeOnClick?: boolean;
+}
 
 export interface ClueSheetOptions {
   title: string;
   /** Plain text. Blank lines split paragraphs; single newlines are kept. */
-  body: string | string[];
+  body?: string | string[];
+  /** Alias for `body` (OP-B Operator pages pass raw drawer text here). */
+  contents?: string;
+  /** Optional monospace, user-selectable block (tool call, config). */
+  code?: string;
   /** Small spaced-caps label above the title, e.g. "Drawer contents". */
   eyebrow?: string;
-  /** Border / title accent. Gold reads as reward, cyan as examine. Default gold. */
+  /** Border / title accent. Gold reads as reward, cyan as examine, magenta = Watch. Default gold. */
   accent?: ClueAccent;
+  /** Alias for `accent`. */
+  tone?: ClueAccent;
+  /** Extra buttons rendered before the dismiss button. */
+  actions?: ClueSheetAction[];
   /** Primary dismiss label. Default "Done". */
   doneLabel?: string;
+  /** Alias for `doneLabel`; pass null to omit the dismiss button entirely. */
+  dismissLabel?: string | null;
   /** When provided, renders a secondary "Pin to Log" action. */
   onPin?: () => void;
   pinLabel?: string;
@@ -54,7 +75,8 @@ export function showClueSheet(opts: ClueSheetOptions): ClueSheetHandle {
   const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   const titleId = `hp-sheet-title-${++idSeq}`;
 
-  const wrap = el('div', `hp-sheet-wrap hp-sheet-wrap--${opts.accent ?? 'gold'}`);
+  const accent = opts.accent ?? opts.tone ?? 'gold';
+  const wrap = el('div', `hp-sheet-wrap hp-sheet-wrap--${accent}`);
   const scrim = el('div', 'hp-scrim');
   scrim.setAttribute('aria-hidden', 'true');
 
@@ -76,9 +98,10 @@ export function showClueSheet(opts: ClueSheetOptions): ClueSheetHandle {
   const body = el('div', 'hp-sheet__body');
   // Focusable so keyboard users can scroll long notes with arrow keys.
   body.tabIndex = 0;
-  for (const paragraph of toParagraphs(opts.body)) {
+  for (const paragraph of toParagraphs(opts.body ?? opts.contents ?? '')) {
     body.appendChild(el('p', 'hp-sheet__p', paragraph));
   }
+  if (opts.code) body.appendChild(el('pre', 'hp-sheet__code', opts.code));
   sheet.appendChild(body);
 
   const actions = el('footer', 'hp-sheet__actions');
@@ -94,10 +117,21 @@ export function showClueSheet(opts: ClueSheetOptions): ClueSheetHandle {
     });
     actions.appendChild(pin);
   }
-  const done = el('button', 'hp-btn hp-btn--primary', opts.doneLabel ?? 'Done');
+  for (const action of opts.actions ?? []) {
+    const btn = el('button', `hp-btn ${action.primary ? 'hp-btn--primary' : 'hp-btn--ghost'}`, action.label);
+    btn.type = 'button';
+    btn.addEventListener('click', async () => {
+      await action.onClick?.(() => void close());
+      if (action.closeOnClick ?? !action.onClick) void close();
+    });
+    actions.appendChild(btn);
+  }
+  const hasPrimaryAction = (opts.actions ?? []).some((a) => a.primary);
+  const doneLabel = opts.dismissLabel === null ? null : (opts.dismissLabel ?? opts.doneLabel ?? 'Done');
+  const done = el('button', `hp-btn ${hasPrimaryAction ? 'hp-btn--ghost' : 'hp-btn--primary'}`, doneLabel ?? 'Done');
   done.type = 'button';
-  actions.appendChild(done);
-  sheet.appendChild(actions);
+  if (doneLabel !== null) actions.appendChild(done);
+  if (actions.childElementCount > 0) sheet.appendChild(actions);
 
   wrap.append(scrim, sheet);
   layer.sheets.appendChild(wrap);

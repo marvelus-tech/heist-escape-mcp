@@ -9,11 +9,19 @@
 
 import { el, getLayer, nextFrame, wait } from './layer';
 
-export type ToastKind = 'success' | 'info' | 'error';
+export type ToastKind = 'success' | 'info' | 'error' | 'warning';
+/** Aliases kept for pages written against the OP-B / OP-C kits. */
+export type ToastTone = ToastKind;
+export type PhoneToastTone = ToastKind;
 
 export interface ToastOptions {
-  kind: ToastKind;
-  message: string;
+  /** Default 'info'. */
+  kind?: ToastKind;
+  /** Alias for `kind`. */
+  tone?: ToastKind;
+  message?: string;
+  /** Alias for `message` (OP-B style: bold title + body). */
+  body?: string;
   /** Optional bold lead-in, e.g. "Code accepted". */
   title?: string;
   /** Visible time in ms. Defaults per kind; pass 0 to keep it until tapped. */
@@ -28,13 +36,15 @@ export interface ToastHandle {
 const DEFAULT_DURATION: Record<ToastKind, number> = {
   success: 2600,
   info: 2400,
-  error: 4200
+  error: 4200,
+  warning: 3400
 };
 
 const ICON: Record<ToastKind, string> = {
   success: '\u2666', // diamond suit, same glyph Stage uses for rewards
   info: '\u25C9', // fisheye
-  error: '\u2715' // multiplication x
+  error: '\u2715', // multiplication x
+  warning: '!'
 };
 
 const OUT_MS = 220;
@@ -42,7 +52,12 @@ const MAX_VISIBLE = 3;
 
 const visible: ToastHandle[] = [];
 
-export function showToast(opts: ToastOptions): ToastHandle {
+export type PhoneToastRequest = ToastOptions;
+
+export function showToast(input: ToastOptions | string): ToastHandle {
+  const opts: ToastOptions = typeof input === 'string' ? { message: input } : input;
+  const kind: ToastKind = opts.kind ?? opts.tone ?? 'info';
+  const message = opts.message ?? opts.body;
   const layer = getLayer();
 
   // Keep the stack short so a burst of poll results cannot cover the screen.
@@ -51,13 +66,13 @@ export function showToast(opts: ToastOptions): ToastHandle {
     visible.shift();
   }
 
-  const toast = el('div', `hp-toast hp-toast--${opts.kind}`);
-  toast.setAttribute('role', opts.kind === 'error' ? 'alert' : 'status');
-  toast.appendChild(el('span', 'hp-toast__icon', ICON[opts.kind]));
+  const toast = el('div', `hp-toast hp-toast--${kind}`);
+  toast.setAttribute('role', kind === 'error' ? 'alert' : 'status');
+  toast.appendChild(el('span', 'hp-toast__icon', ICON[kind]));
 
   const text = el('div', 'hp-toast__text');
   if (opts.title) text.appendChild(el('div', 'hp-toast__title', opts.title));
-  text.appendChild(el('div', 'hp-toast__message', opts.message));
+  if (message) text.appendChild(el('div', 'hp-toast__message', message));
   toast.appendChild(text);
 
   layer.toasts.appendChild(toast);
@@ -85,7 +100,7 @@ export function showToast(opts: ToastOptions): ToastHandle {
   toast.addEventListener('click', () => void dismiss());
   void nextFrame().then(() => toast.classList.add('is-in'));
 
-  const duration = opts.durationMs ?? DEFAULT_DURATION[opts.kind];
+  const duration = opts.durationMs ?? DEFAULT_DURATION[kind];
   if (duration > 0) {
     timer = window.setTimeout(() => void dismiss(), duration);
   }
