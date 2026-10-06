@@ -4,8 +4,9 @@
  * Two views share one page:
  * - Lobby (pre-session, and as an overlay while live): title, session chip,
  *   three seat cards (Examiner / Operator / Watch) with QR codes, Start Demo.
- * - Live stage: full-bleed three.js scene with an edge-docked frosted HUD
- *   (top bar, left action ticker, right role status, bottom inventory strip).
+ * - Live stage: full-bleed three.js scene with an edge-docked frosted dark-glass
+ *   HUD (top bar, left action ticker, right role status, bottom inventory strip)
+ *   styled after the VIS-C concept still: night glass, gold headers, ice borders.
  *
  * Module A owns layout, structure and CSS. Scene materials are Module B
  * (scene-manager). Toasts, examine card, ticker emphasis and the climax ribbon
@@ -1248,7 +1249,7 @@ const STAGE_CSS = `
     position: fixed;
     inset: 0;
     overflow: hidden;
-    background: var(--he-pearl-1);
+    background: var(--he-night-900);
   }
 
   .scene-container {
@@ -1262,15 +1263,16 @@ const STAGE_CSS = `
     display: block;
   }
 
-  /* Soft vignette so frosted panels read against bright marble. */
+  /* Cinematic vignette: darkens only the edge bands the HUD sits in, so dark
+     glass panels feel embedded in the room while the 3D centre stays bright. */
   .scene-container::after {
     content: '';
     position: absolute;
     inset: 0;
     pointer-events: none;
     background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.35), transparent 18%, transparent 78%, rgba(255, 255, 255, 0.45)),
-      linear-gradient(90deg, rgba(255, 255, 255, 0.28), transparent 22%, transparent 78%, rgba(255, 255, 255, 0.28));
+      linear-gradient(180deg, rgba(7, 10, 16, 0.42), transparent 16%, transparent 80%, rgba(7, 10, 16, 0.5)),
+      linear-gradient(90deg, rgba(7, 10, 16, 0.32), transparent 20%, transparent 80%, rgba(7, 10, 16, 0.32));
   }
 
   .hud {
@@ -1289,8 +1291,77 @@ const STAGE_CSS = `
     pointer-events: none;
   }
 
+  /*
+   * Dark-glass remap (VIS-C). Custom properties inherit, so redefining the
+   * generic surface / ink / hairline tokens here flips every .he-glass,
+   * .he-eyebrow and .he-gold-text inside the HUD (and the juice overlays) to the
+   * night palette from the concept still, with zero markup changes. Inside this
+   * subtree "ink" means ivory and the *-700 accents mean "text-safe on dark".
+   */
+  .hud,
+  .scene-container.hj-root {
+    color: var(--he-on-dark-900);
+    --he-ink-900: var(--he-on-dark-900);
+    --he-ink-700: var(--he-on-dark-700);
+    --he-ink-500: var(--he-on-dark-500);
+    --he-ink-300: var(--he-on-dark-300);
+    --he-glass-bg: var(--he-glass-dark-bg);
+    --he-glass-bg-strong: var(--he-glass-dark-bg-strong);
+    --he-glass-shadow: var(--he-glass-dark-shadow);
+    --he-glass-shadow-soft: var(--he-glass-dark-shadow-soft);
+    --he-hairline-soft: var(--he-hairline-dark);
+    --he-hairline-gold: var(--he-hairline-gold-dark);
+    --he-hairline-cyan: var(--he-hairline-ice);
+    --he-hairline-magenta: var(--he-hairline-magenta-dark);
+    --he-glow-gold: var(--he-glow-gold-dark);
+    --he-glow-cyan: var(--he-glow-ice);
+    --he-glow-magenta: var(--he-glow-magenta-dark);
+    --he-gold-700: var(--he-gold-on-dark);
+    --he-gold-900: var(--he-gold-on-dark);
+    --he-cyan-700: var(--he-ice-300);
+    --he-cyan-500: var(--he-ice-500);
+    --he-magenta-700: var(--he-magenta-300);
+    /* Pastel fills become translucent washes over the glass. (The --he-*-100
+       tokens are left alone: .he-gold-text uses them as gradient stops.) */
+    --hud-tint-neutral: rgba(255, 255, 255, 0.07);
+    --hud-tint-gold: rgba(232, 200, 120, 0.16);
+    --hud-tint-gold-strong: rgba(232, 200, 120, 0.3);
+    --hud-tint-cyan: rgba(140, 222, 240, 0.16);
+    --hud-tint-magenta: rgba(240, 182, 214, 0.16);
+    --hud-scrollbar: rgba(255, 255, 255, 0.18);
+  }
+
   .hud > * { pointer-events: auto; }
-  .hud .he-glass { box-shadow: var(--he-glass-shadow-soft); }
+
+  .hud .he-glass {
+    background-image: var(--he-glass-dark-sheen);
+    box-shadow: var(--he-glass-shadow-soft);
+  }
+
+  /* Shared chrome primitives on dark glass */
+  .hud .brand-seal {
+    color: var(--he-gold-on-dark);
+    background: radial-gradient(circle at 50% 35%, rgba(232, 200, 120, 0.3), rgba(232, 200, 120, 0.05) 72%);
+    box-shadow: inset 0 0 0 1px var(--he-hairline-gold-dark), 0 0 14px rgba(232, 200, 120, 0.22);
+  }
+
+  .hud .brand-title {
+    font-size: 1.25rem;
+    letter-spacing: 0.1em;
+    filter: drop-shadow(0 0 10px rgba(240, 214, 140, 0.35));
+  }
+
+  .hud .brand-sub { color: var(--he-gold-on-dark-deep); letter-spacing: 0.2em; }
+
+  .hud .chip-copy {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--he-on-dark-500);
+  }
+
+  .hud .chip-copy:hover,
+  .hud .chip-copy.is-copied { color: var(--he-gold-on-dark); background: var(--hud-tint-gold); }
+
+  .hud .empty-state { color: var(--he-on-dark-500); }
 
   /* Top bar */
 
@@ -1323,9 +1394,9 @@ const STAGE_CSS = `
     font-weight: 700;
     letter-spacing: 0.16em;
     text-transform: uppercase;
-    color: var(--he-gold-900);
-    background: linear-gradient(135deg, var(--he-gold-100), var(--he-gold-200));
-    box-shadow: inset 0 0 0 1px var(--he-hairline-gold);
+    color: var(--he-gold-on-dark);
+    background: linear-gradient(135deg, var(--hud-tint-gold), var(--hud-tint-gold-strong));
+    box-shadow: inset 0 0 0 1px var(--he-hairline-gold-dark), 0 0 14px rgba(232, 200, 120, 0.2);
   }
 
   .hud-session {
@@ -1340,8 +1411,9 @@ const STAGE_CSS = `
   }
 
   .hud-session code { font-size: 0.9rem; font-weight: 600; color: var(--he-ink-900); letter-spacing: 0.04em; }
-  .hud-session-sep { width: 4px; height: 4px; border-radius: 50%; background: var(--he-gold-500); }
+  .hud-session-sep { width: 4px; height: 4px; border-radius: 50%; background: var(--he-gold-500); box-shadow: 0 0 6px rgba(232, 200, 120, 0.6); }
 
+  /* Status pill on the right, ice-bordered like the still's STAGE / EXAMINE readout. */
   .hud-tools {
     display: flex;
     align-items: center;
@@ -1349,6 +1421,7 @@ const STAGE_CSS = `
     height: 100%;
     padding: 0 var(--he-s-2) 0 var(--he-s-4);
     border-radius: var(--he-r-pill);
+    border-color: var(--he-hairline-ice);
   }
 
   .hud-stat {
@@ -1364,22 +1437,27 @@ const STAGE_CSS = `
     border-right: 1px solid var(--he-hairline-soft);
   }
 
+  .hud-stat .he-ico { color: var(--he-ice-300); }
   .hud-stat:last-of-type { padding-right: var(--he-s-2); }
 
+  /* Round ice-ringed controls, the INSPECT / INSIGHTS / LOG buttons of the still
+     mapped onto the Stage's real controls (QR lobby, fullscreen, end). */
   .tool-btn {
     display: grid;
     place-items: center;
     width: 34px;
     height: 34px;
     border-radius: 50%;
-    border: 1px solid var(--he-hairline-soft);
-    background: rgba(255, 255, 255, 0.65);
-    color: var(--he-ink-700);
-    transition: background var(--he-dur-fast) var(--he-ease), color var(--he-dur-fast) var(--he-ease), border-color var(--he-dur-fast) var(--he-ease);
+    border: 1px solid var(--he-hairline-ice);
+    background: var(--hud-tint-neutral);
+    color: var(--he-ice-300);
+    box-shadow: 0 0 10px rgba(140, 222, 240, 0.12);
+    transition: background var(--he-dur-fast) var(--he-ease), color var(--he-dur-fast) var(--he-ease), border-color var(--he-dur-fast) var(--he-ease), box-shadow var(--he-dur-fast) var(--he-ease);
   }
 
-  .tool-btn:hover { background: var(--he-gold-100); border-color: var(--he-hairline-gold); color: var(--he-gold-700); }
-  .tool-btn--danger:hover { background: var(--he-magenta-100); border-color: var(--he-hairline-magenta); color: var(--he-magenta-700); }
+  .tool-btn:hover { background: var(--hud-tint-cyan); box-shadow: var(--he-glow-ice); color: var(--he-ice-100); }
+  .tool-btn--danger { border-color: var(--he-hairline-dark); color: var(--he-on-dark-500); box-shadow: none; }
+  .tool-btn--danger:hover { background: var(--hud-tint-magenta); border-color: var(--he-hairline-magenta-dark); box-shadow: var(--he-glow-magenta-dark); color: var(--he-magenta-300); }
 
   /* Left action ticker */
 
@@ -1391,8 +1469,10 @@ const STAGE_CSS = `
     min-height: min(40%, 320px);
     max-height: min(100%, 68vh);
     overflow: hidden;
-    border-color: var(--he-hairline-gold);
+    border-color: var(--he-hairline-ice);
   }
+
+  .hud .hud-ticker { box-shadow: var(--he-glass-shadow-soft), 0 0 22px rgba(140, 222, 240, 0.14); }
 
   .ticker-head,
   .ticker-foot {
@@ -1407,8 +1487,8 @@ const STAGE_CSS = `
   .ticker-foot { border-top: 1px solid var(--he-hairline-soft); padding-block: var(--he-s-2); }
   .ticker-foot .he-eyebrow { font-size: 0.6rem; }
 
-  .ticker-title { display: inline-flex; align-items: center; gap: var(--he-s-2); color: var(--he-cyan-700); }
-  .ticker-title .he-eyebrow { color: var(--he-ink-700); }
+  .ticker-title { display: inline-flex; align-items: center; gap: var(--he-s-2); color: var(--he-ice-300); }
+  .ticker-title .he-eyebrow { font-family: var(--he-font-display); font-size: 0.78rem; font-weight: 700; color: var(--he-gold-on-dark); }
 
   .ticker-list {
     flex: 1;
@@ -1419,25 +1499,25 @@ const STAGE_CSS = `
     flex-direction: column;
     gap: var(--he-s-2);
     scrollbar-width: thin;
-    scrollbar-color: var(--he-pearl-3) transparent;
+    scrollbar-color: var(--hud-scrollbar) transparent;
   }
 
   .tick-item {
-    --tick-accent: var(--he-ink-300);
-    --tick-tint: var(--he-pearl-2);
+    --tick-accent: var(--he-on-dark-500);
+    --tick-tint: var(--hud-tint-neutral);
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
     gap: var(--he-s-3);
     align-items: start;
     padding: var(--he-s-2) var(--he-s-3);
     border-radius: var(--he-r-sm);
-    background: rgba(255, 255, 255, 0.55);
-    box-shadow: inset 0 0 0 1px var(--he-hairline-soft);
+    background: rgba(255, 255, 255, 0.04);
+    box-shadow: inset 0 0 0 1px var(--he-hairline-dark);
     animation: he-slide-in var(--he-dur) var(--he-ease);
   }
 
-  .tick-item--gold { --tick-accent: var(--he-gold-700); --tick-tint: var(--he-gold-100); }
-  .tick-item--cyan { --tick-accent: var(--he-cyan-700); --tick-tint: var(--he-cyan-100); }
+  .tick-item--gold { --tick-accent: var(--he-gold-on-dark); --tick-tint: var(--hud-tint-gold); }
+  .tick-item--cyan { --tick-accent: var(--he-ice-300); --tick-tint: var(--hud-tint-cyan); }
 
   .tick-icon {
     display: grid;
@@ -1447,6 +1527,7 @@ const STAGE_CSS = `
     border-radius: 50%;
     color: var(--tick-accent);
     background: var(--tick-tint);
+    box-shadow: inset 0 0 0 1px var(--he-hairline-dark);
     margin-top: 1px;
   }
 
@@ -1493,9 +1574,9 @@ const STAGE_CSS = `
   }
 
   .role-chip {
-    --role-accent: var(--he-gold-700);
-    --role-hairline: var(--he-hairline-gold);
-    --role-tint: var(--he-gold-100);
+    --role-accent: var(--he-gold-on-dark);
+    --role-hairline: var(--he-hairline-gold-dark);
+    --role-tint: var(--hud-tint-gold);
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
@@ -1504,8 +1585,8 @@ const STAGE_CSS = `
     border-color: var(--role-hairline);
   }
 
-  .role-chip--examiner { --role-accent: var(--he-cyan-700); --role-hairline: var(--he-hairline-cyan); --role-tint: var(--he-cyan-100); }
-  .role-chip--watch { --role-accent: var(--he-magenta-700); --role-hairline: var(--he-hairline-magenta); --role-tint: var(--he-magenta-100); }
+  .role-chip--examiner { --role-accent: var(--he-ice-300); --role-hairline: var(--he-hairline-ice); --role-tint: var(--hud-tint-cyan); }
+  .role-chip--watch { --role-accent: var(--he-magenta-300); --role-hairline: var(--he-hairline-magenta-dark); --role-tint: var(--hud-tint-magenta); }
 
   .role-icon {
     display: grid;
@@ -1514,7 +1595,7 @@ const STAGE_CSS = `
     height: 36px;
     border-radius: 50%;
     color: var(--role-accent);
-    background: radial-gradient(circle at 50% 35%, #fff, var(--role-tint));
+    background: radial-gradient(circle at 50% 35%, rgba(255, 255, 255, 0.12), var(--role-tint));
     box-shadow: inset 0 0 0 1px var(--role-hairline);
   }
 
@@ -1526,29 +1607,31 @@ const STAGE_CSS = `
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: var(--he-ink-300);
-    opacity: 0.6;
+    background: var(--he-on-dark-300);
+    opacity: 0.8;
   }
 
-  .role-chip[data-state='seated'] .role-state { background: var(--role-accent); opacity: 1; box-shadow: 0 0 0 3px var(--role-tint); }
+  .role-chip[data-state='seated'] .role-state { background: var(--role-accent); opacity: 1; box-shadow: 0 0 0 3px var(--role-tint), 0 0 10px var(--role-accent); }
   .role-chip[data-state='seated'] .role-sub { color: var(--role-accent); font-weight: 600; }
 
-  /* Room label above the strip */
+  /* Room label above the strip: gold-bordered readout, like the still's status pill */
 
   .hud-room {
     grid-area: room;
     justify-self: start;
     align-self: end;
-    padding: 6px 14px;
+    padding: 7px 16px;
     border-radius: var(--he-r-pill);
     font-family: var(--he-font-display);
     font-size: 0.85rem;
     font-weight: 700;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
-    color: var(--he-ink-700);
-    border-color: var(--he-hairline-gold);
+    color: var(--he-gold-on-dark);
+    border-color: var(--he-hairline-gold-dark);
   }
+
+  .hud .hud-room { box-shadow: var(--he-glass-shadow-soft), 0 0 18px rgba(232, 200, 120, 0.16); }
 
   /* Bottom inventory strip */
 
@@ -1571,8 +1654,8 @@ const STAGE_CSS = `
     border-color: var(--he-hairline-gold);
   }
 
-  .inv-summary .he-ico { width: 1.5em; height: 1.5em; color: var(--he-gold-700); }
-  .inv-summary strong { font-size: 1.15rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .inv-summary .he-ico { width: 1.5em; height: 1.5em; color: var(--he-gold-on-dark); filter: drop-shadow(0 0 6px rgba(232, 200, 120, 0.4)); }
+  .inv-summary strong { font-size: 1.15rem; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--he-on-dark-900); }
   .inv-summary strong small { font-size: 0.65rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--he-ink-500); }
 
   .inv-strip {
@@ -1583,7 +1666,7 @@ const STAGE_CSS = `
     overflow-x: auto;
     overflow-y: hidden;
     scrollbar-width: thin;
-    scrollbar-color: var(--he-pearl-3) transparent;
+    scrollbar-color: var(--hud-scrollbar) transparent;
   }
 
   .inv-strip .empty-state { align-self: center; margin: 0 auto; }
@@ -1598,26 +1681,26 @@ const STAGE_CSS = `
     gap: 3px;
     padding: var(--he-s-2);
     border-radius: var(--he-r-sm);
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.5));
-    box-shadow: inset 0 0 0 1px var(--he-hairline-soft);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.03));
+    box-shadow: inset 0 0 0 1px var(--he-hairline-dark);
     animation: he-rise var(--he-dur) var(--he-ease);
   }
 
-  .inv-tile.is-latest { box-shadow: var(--he-glow-gold); }
+  .inv-tile.is-latest { box-shadow: var(--he-glow-gold-dark); background: linear-gradient(180deg, var(--hud-tint-gold), rgba(255, 255, 255, 0.03)); }
 
   .inv-glyph {
     font-family: var(--he-font-display);
     font-weight: 700;
     font-size: clamp(1rem, 1.5vw, 1.5rem);
     letter-spacing: 0.04em;
-    color: var(--he-gold-700);
-    background: radial-gradient(circle at 50% 35%, #fff, var(--he-gold-100));
+    color: var(--he-gold-on-dark);
+    background: radial-gradient(circle at 50% 35%, var(--hud-tint-gold-strong), rgba(232, 200, 120, 0.04));
     width: 2.2em;
     height: 2.2em;
     display: grid;
     place-items: center;
     border-radius: 50%;
-    box-shadow: inset 0 0 0 1px var(--he-hairline-gold);
+    box-shadow: inset 0 0 0 1px var(--he-hairline-gold-dark);
   }
 
   .inv-name {
@@ -1649,8 +1732,9 @@ const STAGE_CSS = `
   }
 
   .hud-qr-text { display: flex; flex-direction: column; gap: 2px; text-align: right; }
-  .hud-qr-title { font-family: var(--he-font-display); font-weight: 700; font-size: 0.85rem; letter-spacing: 0.1em; text-transform: uppercase; }
+  .hud-qr-title { font-family: var(--he-font-display); font-weight: 700; font-size: 0.85rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--he-gold-on-dark); }
 
+  /* QR stays on solid white: phone cameras need the contrast, glass does not. */
   .hud-qr-img {
     height: 100%;
     aspect-ratio: 1;
@@ -1658,7 +1742,7 @@ const STAGE_CSS = `
     border-radius: var(--he-r-xs);
     background: #fff;
     overflow: hidden;
-    box-shadow: inset 0 0 0 1px var(--he-hairline-gold);
+    box-shadow: 0 0 0 1px var(--he-hairline-gold-dark), 0 0 14px rgba(232, 200, 120, 0.2);
   }
 
   .empty-state {
@@ -1675,14 +1759,19 @@ const STAGE_CSS = `
      inventory strip. Palette tokens are pointed at the shared theme. */
 
   .scene-container.hj-root {
-    --hj-ink: var(--he-ink-900);
-    --hj-muted: var(--he-ink-500);
-    --hj-pearl: var(--he-glass-bg-strong);
-    --hj-gold: var(--he-gold-500);
-    --hj-gold-deep: var(--he-gold-700);
-    --hj-gold-light: var(--he-gold-200);
-    --hj-cyan: var(--he-cyan-500);
-    --hj-cyan-deep: var(--he-cyan-700);
+    --hj-ink: var(--he-on-dark-900);
+    --hj-muted: var(--he-on-dark-500);
+    --hj-glass: var(--he-glass-dark-bg-strong);
+    --hj-glass-edge: var(--he-hairline-dark);
+    --hj-glass-sheen: var(--he-glass-dark-sheen);
+    --hj-gold-text: var(--he-gold-on-dark);
+    --hj-gold-edge: var(--he-hairline-gold-dark);
+    --hj-cyan: var(--he-ice-500);
+    --hj-cyan-deep: var(--he-ice-700);
+    --hj-cyan-text: var(--he-ice-300);
+    --hj-cyan-edge: var(--he-hairline-ice);
+    --hj-font-display: var(--he-font-display);
+    --hj-shadow: var(--he-glass-dark-shadow);
     --hj-toast-top: calc(var(--he-hud-top-h) + var(--he-hud-gap) * 2);
     --hj-examine-left: calc(var(--he-hud-side-w) + var(--he-hud-gap) * 2);
     --hj-examine-top: calc(var(--he-hud-top-h) + var(--he-hud-gap) * 2);
