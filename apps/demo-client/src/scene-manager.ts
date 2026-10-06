@@ -62,10 +62,14 @@ const EXAMINE_DURATION_MS = 1400;
 /**
  * Scene Manager for Heist Escape (Module B: scene art direction)
  *
- * Light-first luxury museum: pearl marble, champagne brass/gold, glass cases,
- * soft cyan emissive on interactables, gold shimmer on the hero diamond.
- * Lighting = hemisphere fill + warm key (only shadow caster) + cool rim.
- * "Bloom" is faked with additive glow sprites so only emissives and gold glow.
+ * Warm-lux museum (VIS-A concept still): warm marble, cream walls, dark
+ * lacquered wood, champagne gold, glass cases, ice-cyan emissive on
+ * interactables, gold shimmer on the hero diamond.
+ * Lighting = low warm/dark-bounce hemisphere fill + warm key (only shadow caster)
+ * + cool rim + an overhead "chandelier" spot that pools light on the floor.
+ * Fill is kept low on purpose: contrast comes from the key/fill ratio, not
+ * from darker paint. "Bloom" is faked with additive glow sprites so only
+ * emissives and gold glow.
  */
 export class SceneManager {
   private scene: THREE.Scene;
@@ -85,9 +89,10 @@ export class SceneManager {
     this.lightRig.name = 'lights';
     this.scene.add(this.roomRoot, this.lightRig);
 
-    // Pearl backdrop + very light haze. Metals need an environment to read as metal.
+    // Warm amber haze: starts past the mid-room so the foreground stays crisp and
+    // only the far wall softens. Same colour as the background so nothing seams.
     this.scene.background = new THREE.Color(PALETTE.background);
-    this.scene.fog = new THREE.Fog(PALETTE.background, 22, 48);
+    this.scene.fog = new THREE.Fog(PALETTE.background, 20, 62);
     this.scene.environment = getStudioEnvironment();
   }
 
@@ -103,13 +108,17 @@ export class SceneManager {
   private setupLighting(roomId: number): void {
     this.disposeGroup(this.lightRig);
 
-    // Soft skylight fill: white sky, warm marble bounce from below.
-    const hemisphere = new THREE.HemisphereLight(0xfff9f2, 0xd9cbb5, 0.42);
+    // Low fill: cream ceiling above, espresso/marble bounce below. The old 0.42
+    // white fill is what flattened the room; shadows now have somewhere to go.
+    const hemisphere = new THREE.HemisphereLight(0xfff2e2, 0x2e1f16, 0.3);
     this.lightRig.add(hemisphere);
 
     // Warm key: the single shadow caster (keeps the shadow pass cheap on a laptop).
-    const key = new THREE.DirectionalLight(PALETTE.warmLight, 1.7);
-    key.position.set(6, 10, 5);
+    // High and from the upper right (the still's window side) so forms are
+    // side-lit, camera-facing surfaces still catch some (positive z), and its
+    // glossy-floor reflection lands behind the Stage camera at (0, 3, 8).
+    const key = new THREE.DirectionalLight(PALETTE.warmLight, 1.1);
+    key.position.set(6, 12, 5);
     key.castShadow = true;
     key.shadow.mapSize.set(2048, 2048);
     key.shadow.camera.left = -20;
@@ -122,31 +131,41 @@ export class SceneManager {
     key.shadow.normalBias = 0.03;
     this.lightRig.add(key, key.target);
 
-    // Cool rim from the back-left: separates pale objects from pale walls.
-    const rim = new THREE.DirectionalLight(PALETTE.coolLight, 0.6);
-    rim.position.set(-7, 6, -8);
+    // Cool rim: backlight from behind the far wall. Only surfaces facing away
+    // from the camera catch it (pure edge separation), side walls and back wall
+    // stay warm, and its glossy-floor reflection is a soft pool at room centre
+    // that reads as the chandelier's. Kept dim and fairly steep: at grazing
+    // angles a directional light smears into a hard white streak on the floor.
+    const rim = new THREE.DirectionalLight(PALETTE.coolLight, 0.4);
+    rim.position.set(0, 5, -10);
     this.lightRig.add(rim, rim.target);
 
-    // Room accents. Spot intensities are candela (three r155+ physical lights).
+    // Chandelier: one overhead spot pooling warm light on the polished floor,
+    // plus a soft glare sprite at the ceiling so the source itself reads.
+    // Spot intensities are candela (three r155+ physical lights).
+    this.addChandelier(0, WALL_HEIGHT - 0.2, -1.5, roomId === 5 ? 110 : 90);
+
+    // Room accents.
     switch (roomId) {
       case 1:
-        this.addSpot(-4, 7.4, -1, 55, PALETTE.warmLight);
-        this.addSpot(4, 7.4, -1, 55, PALETTE.warmLight);
+        // Aimed at the columns so the back wall gets a lit centre and shadowed corners.
+        this.addSpot(-4, 7.4, -4, 80, PALETTE.warmLight, -3.6, 2.5, -9.5);
+        this.addSpot(4, 7.4, -4, 80, PALETTE.warmLight, 3.6, 2.5, -9.5);
         break;
       case 2:
-        this.addSpot(-4, 7.4, -6, 70, PALETTE.warmLight, -4, 2.5, -9.5);
-        this.addSpot(4, 7.4, -6, 70, PALETTE.warmLight, 4, 2.5, -9.5);
-        this.addSpot(-4, 7.4, 2, 45, PALETTE.warmLight);
+        this.addSpot(-4, 7.4, -6, 90, PALETTE.warmLight, -4, 2.5, -9.5);
+        this.addSpot(4, 7.4, -6, 90, PALETTE.warmLight, 4, 2.5, -9.5);
+        this.addSpot(-4, 7.4, 2, 55, PALETTE.warmLight);
         break;
       case 3:
-        this.addSpot(0, 7.4, -2, 60, 0xffe9c8);
-        this.addSpot(-6, 7.4, 0, 40, 0xffe9c8, -9, 2, 0);
+        this.addSpot(0, 7.4, -2, 75, 0xffdca6);
+        this.addSpot(-6, 7.4, 0, 50, 0xffdca6, -9, 2, 0);
         break;
       case 4:
-        this.addSpot(0, 7.4, -6, 50, PALETTE.warmLight, 0, 1.5, -9.5);
+        this.addSpot(0, 7.4, -6, 65, PALETTE.warmLight, 0, 1.5, -9.5);
         break;
       case 5:
-        this.addSpot(0, 7.6, 3, 40, PALETTE.warmLight, 0, 1.5, 0);
+        this.addSpot(0, 7.6, 3, 50, PALETTE.warmLight, 0, 1.5, 0);
         break;
     }
   }
@@ -160,6 +179,21 @@ export class SceneManager {
     spot.position.set(x, y, z);
     spot.target.position.set(tx, ty, tz);
     this.lightRig.add(spot, spot.target);
+  }
+
+  /**
+   * Overhead chandelier light. Wide, soft-edged cone straight down; the glare
+   * sprite is additive so it blooms on its own without a post pass.
+   */
+  private addChandelier(x: number, y: number, z: number, intensity: number): void {
+    const spot = new THREE.SpotLight(0xffd39a, intensity, 22, Math.PI / 5, 0.7, 1.6);
+    spot.position.set(x, y, z);
+    spot.target.position.set(x, 0, z);
+    this.lightRig.add(spot, spot.target);
+
+    const glare = makeGlow(0xffe2b4, 5.5, 0.28);
+    glare.position.set(x, y - 0.6, z);
+    this.lightRig.add(glare);
   }
 
   private clearScene(): void {
@@ -215,6 +249,14 @@ export class SceneManager {
       wall.receiveShadow = true;
       this.roomRoot.add(wall);
     }
+
+    // Ceiling: closes the box so the top of frame is shadowed plaster instead of
+    // a sky-coloured strip, and gives the chandelier glare something to sit against.
+    // castShadow stays false: the key light sits above it and would shadow the whole room.
+    const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(ROOM_SIZE, ROOM_SIZE), materials.plasterCeiling());
+    ceiling.rotation.x = Math.PI / 2;
+    ceiling.position.y = WALL_HEIGHT;
+    this.roomRoot.add(ceiling);
 
     // Gold crown moulding on all three walls.
     const crownY = WALL_HEIGHT - 0.4;
