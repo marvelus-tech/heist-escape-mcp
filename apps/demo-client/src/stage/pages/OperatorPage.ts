@@ -1,161 +1,231 @@
 /**
- * Operator Page - Phone-friendly controls for human player
- * 
+ * Operator Page - Phone-friendly controls for the human player
+ *
  * Features:
- * - Join session automatically
- * - Big action buttons (drawers, codes, inventory)
- * - Action log
+ * - Join session (name + role)
+ * - Big action buttons (drawers, codes)
+ * - Drawer contents open in a ClueSheet (never a browser alert)
+ * - Pinned clues collect in an on-page Find Log
+ * - Shared inventory + recent actions polled every 2s
  * - No heavy 3D required
  */
+
+import { mountPhoneKit, showClueSheet, showToast } from '../phone';
+
+interface FindLogEntry {
+  title: string;
+  contents: string;
+  at: number;
+}
+
+const STYLE_ID = 'operator-page-styles';
+const POLL_MS = 2000;
+
+/** Escape server strings before they go into innerHTML templates. */
+function esc(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/** "reception-desk-top" -> "Reception desk top" */
+function humanize(id: string): string {
+  const text = id.replace(/[-_]+/g, ' ').trim();
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
 
 export class OperatorPage {
   private apiBase: string;
   private sessionId: string;
   private playerId: string = '';
   private joined: boolean = false;
-  
+  private pollTimer: number | null = null;
+  private findLog: FindLogEntry[] = [];
+
   constructor(apiBase: string, sessionId: string) {
     this.apiBase = apiBase;
     this.sessionId = sessionId;
+    this.findLog = this.loadFindLog();
   }
-  
+
   render() {
     const app = document.getElementById('app')!;
-    
+    mountPhoneKit();
+    this.applyStyles();
+
     if (!this.joined) {
       app.innerHTML = this.renderJoinScreen();
     } else {
       app.innerHTML = this.renderControls();
+      this.renderFindLog();
       this.startPolling();
     }
-    
+
     this.attachEventListeners();
-    this.applyStyles();
   }
-  
+
+  private renderHeader(subtitle: string): string {
+    return `
+      <header class="op-header">
+        <div class="op-header__row">
+          <span class="op-header__eyebrow">Operator</span>
+          <span class="op-session">
+            <span class="op-session__label">Session</span>
+            <code class="op-session__id">${esc(this.sessionId)}</code>
+          </span>
+        </div>
+        <h1 class="op-header__title">${esc(subtitle)}</h1>
+      </header>
+    `;
+  }
+
   private renderJoinScreen(): string {
     return `
-      <div class="operator-container">
-        <header class="operator-header">
-          <h1>📱 Operator Controls</h1>
-          <p class="session-badge">Session: <code>${this.sessionId}</code></p>
-          <p class="companion-note">
-            <strong>📱 Phone companion</strong> • Point your phone at the main screen to see the 3D museum
+      <div class="op-page">
+        ${this.renderHeader('Operator Controls')}
+
+        <section class="op-card op-join">
+          <span class="op-card__eyebrow">Phone companion</span>
+          <h2 class="op-card__title">Join as Operator</h2>
+          <p class="op-card__lede">
+            You handle drawers, codes, and physical interactions.
+            Keep the main screen in view for the 3D museum.
           </p>
-        </header>
-        
-        <div class="join-form">
-          <div class="join-icon">👋</div>
-          <h2>Join as Operator</h2>
-          <p>You'll handle drawers, codes, and physical interactions</p>
-          
-          <div class="input-group">
-            <label>Your Name</label>
-            <input type="text" id="operator-name" placeholder="Enter your name" autocomplete="name" />
-          </div>
-          
-          <button id="join-operator-btn" class="primary-btn">Join Heist</button>
-        </div>
+
+          <label class="op-field">
+            <span class="op-field__label">Your name</span>
+            <input type="text" id="operator-name" class="op-input" placeholder="Enter your name" autocomplete="name" enterkeyhint="go" />
+          </label>
+
+          <button id="join-operator-btn" class="op-btn op-btn--gold">Join Heist</button>
+        </section>
       </div>
     `;
   }
-  
+
   private renderControls(): string {
     return `
-      <div class="operator-container">
-        <header class="operator-header">
-          <h1>📱 Operator: ${this.playerId}</h1>
-          <p class="session-badge">Session: <code>${this.sessionId}</code></p>
-        </header>
-        
-        <div class="operator-controls">
-          <section class="quick-actions">
-            <h2>Quick Actions</h2>
-            
-            <div class="action-group">
-              <h3>Drawers</h3>
-              <button class="action-btn" data-drawer="reception-desk-top">Reception Desk (Top)</button>
-              <button class="action-btn" data-drawer="reception-desk-middle">Reception Desk (Middle)</button>
-              <button class="action-btn" data-drawer="reception-desk-bottom">Reception Desk (Bottom)</button>
-              <button class="action-btn" data-drawer="filing-j-l">Filing Cabinet (J-L)</button>
+      <div class="op-page">
+        ${this.renderHeader(this.playerId)}
+
+        <section class="op-card">
+          <span class="op-card__eyebrow">Quick actions</span>
+          <h2 class="op-card__title">Drawers</h2>
+          <div class="op-stack">
+            <button class="op-btn op-btn--cyan" data-drawer="reception-desk-top">Reception Desk (Top)</button>
+            <button class="op-btn op-btn--cyan" data-drawer="reception-desk-middle">Reception Desk (Middle)</button>
+            <button class="op-btn op-btn--cyan" data-drawer="reception-desk-bottom">Reception Desk (Bottom)</button>
+            <button class="op-btn op-btn--cyan" data-drawer="filing-j-l">Filing Cabinet (J-L)</button>
+          </div>
+        </section>
+
+        <section class="op-card">
+          <span class="op-card__eyebrow">Keypad</span>
+          <h2 class="op-card__title">Enter Code</h2>
+          <div class="op-stack">
+            <input type="text" id="code-input" class="op-input op-input--code" placeholder="Enter code" maxlength="8" inputmode="text" autocapitalize="characters" autocomplete="off" enterkeyhint="send" />
+            <select id="code-target" class="op-input">
+              <option value="">Select target</option>
+              <option value="card-catalog">Card Catalog</option>
+              <option value="vault-keypad">Vault Keypad</option>
+            </select>
+            <button id="submit-code-btn" class="op-btn op-btn--gold">Submit Code</button>
+          </div>
+        </section>
+
+        <section class="op-card">
+          <div class="op-card__head">
+            <div>
+              <span class="op-card__eyebrow">Pinned clues</span>
+              <h2 class="op-card__title">Find Log</h2>
             </div>
-            
-            <div class="action-group">
-              <h3>Enter Code</h3>
-              <div class="code-input-group">
-                <input type="text" id="code-input" placeholder="Enter code" maxlength="8" />
-                <select id="code-target">
-                  <option value="">Select target</option>
-                  <option value="card-catalog">Card Catalog</option>
-                  <option value="vault-keypad">Vault Keypad</option>
-                </select>
-                <button id="submit-code-btn" class="submit-btn">Submit Code</button>
-              </div>
-            </div>
-          </section>
-          
-          <section class="inventory-section">
-            <h2>Shared Inventory</h2>
-            <div id="operator-inventory" class="inventory-list">
-              <div class="empty-state">No items yet</div>
-            </div>
-          </section>
-          
-          <section class="action-log-section">
-            <h2>Recent Actions</h2>
-            <div id="operator-action-log" class="action-log-list">
-              <div class="empty-state">No actions yet</div>
-            </div>
-          </section>
-          
-          <section class="help-section">
-            <h2>💡 Tips</h2>
-            <ul>
-              <li>Wait for your Examiner agent to find clues</li>
-              <li>Open drawers when requested</li>
-              <li>Write down vault digits as you find them</li>
-              <li>Assemble code in room order (1-2-3-4)</li>
-            </ul>
-          </section>
-        </div>
+            <button id="clear-find-log-btn" class="op-link-btn" type="button" hidden>Clear</button>
+          </div>
+          <div id="operator-find-log" class="op-list"></div>
+        </section>
+
+        <section class="op-card">
+          <span class="op-card__eyebrow">Team</span>
+          <h2 class="op-card__title">Shared Inventory</h2>
+          <div id="operator-inventory" class="op-list">
+            <div class="op-empty">No items yet</div>
+          </div>
+        </section>
+
+        <section class="op-card">
+          <span class="op-card__eyebrow">Live</span>
+          <h2 class="op-card__title">Recent Actions</h2>
+          <div id="operator-action-log" class="op-list">
+            <div class="op-empty">No actions yet</div>
+          </div>
+        </section>
+
+        <section class="op-card op-card--tips">
+          <span class="op-card__eyebrow">Tips</span>
+          <ul class="op-tips">
+            <li>Wait for your Examiner agent to find clues</li>
+            <li>Open drawers when requested</li>
+            <li>Pin vault digits to the Find Log as you find them</li>
+            <li>Assemble the code in room order (1-2-3-4)</li>
+          </ul>
+        </section>
       </div>
     `;
   }
-  
+
   private attachEventListeners() {
     const joinBtn = document.getElementById('join-operator-btn');
+    const nameInput = document.getElementById('operator-name') as HTMLInputElement | null;
     if (joinBtn) {
       joinBtn.addEventListener('click', () => this.joinSession());
+      nameInput?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') this.joinSession();
+      });
     }
-    
-    // Drawer buttons
-    document.querySelectorAll('.action-btn[data-drawer]').forEach(btn => {
-      btn.addEventListener('click', async (e) => {
-        const drawerId = (e.target as HTMLElement).getAttribute('data-drawer');
-        if (drawerId) {
+
+    document.querySelectorAll<HTMLButtonElement>('.op-btn[data-drawer]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const drawerId = btn.dataset.drawer;
+        if (!drawerId) return;
+        btn.disabled = true;
+        try {
           await this.openDrawer(drawerId);
+        } finally {
+          btn.disabled = false;
         }
       });
     });
-    
-    // Code submission
+
     const submitCodeBtn = document.getElementById('submit-code-btn');
+    const codeInput = document.getElementById('code-input') as HTMLInputElement | null;
     if (submitCodeBtn) {
       submitCodeBtn.addEventListener('click', () => this.submitCode());
+      codeInput?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') this.submitCode();
+      });
     }
+
+    document.getElementById('clear-find-log-btn')?.addEventListener('click', () => {
+      this.findLog = [];
+      this.saveFindLog();
+      this.renderFindLog();
+      showToast({ tone: 'info', title: 'Find Log cleared' });
+    });
   }
-  
+
   private async joinSession() {
-    const nameInput = document.getElementById('operator-name') as HTMLInputElement;
+    const nameInput = document.getElementById('operator-name') as HTMLInputElement | null;
     const name = nameInput?.value.trim();
-    
+
     if (!name) {
-      alert('Please enter your name');
+      showToast({ tone: 'warning', title: 'Enter your name', body: 'The crew needs to know who is on the phone.' });
+      nameInput?.focus();
       return;
     }
-    
-    this.playerId = name;
-    
+
     try {
       const response = await fetch(`${this.apiBase}/api/join_session`, {
         method: 'POST',
@@ -166,17 +236,23 @@ export class OperatorPage {
           role: 'operator'
         })
       });
-      
-      if (!response.ok) throw new Error('Join failed');
-      
+
+      if (!response.ok) throw new Error(`Join failed (${response.status})`);
+
+      this.playerId = name;
       this.joined = true;
       this.render();
+      showToast({ tone: 'success', title: `Welcome, ${name}`, body: 'You are the Operator for this heist.' });
     } catch (error) {
       console.error('Failed to join:', error);
-      alert('Failed to join session. Make sure the server is running.');
+      showToast({
+        tone: 'error',
+        title: 'Could not join session',
+        body: 'Make sure the server is running, then try again.'
+      });
     }
   }
-  
+
   private async openDrawer(drawerId: string) {
     try {
       const response = await fetch(`${this.apiBase}/api/open_drawer`, {
@@ -188,37 +264,50 @@ export class OperatorPage {
           drawerId: drawerId
         })
       });
-      
+
       const data = await response.json();
-      
+
       if (data.success) {
-        alert(`Drawer Contents:\n\n${data.contents}`);
+        const title = `Drawer \u00B7 ${drawerId}`;
+        const contents = String(data.contents ?? 'The drawer is empty');
+        showClueSheet({
+          eyebrow: 'Drawer opened',
+          title,
+          contents,
+          onPin: () => this.pinToFindLog(title, contents)
+        });
       } else {
-        alert(data.message || 'Failed to open drawer');
+        showToast({
+          tone: 'error',
+          title: humanize(drawerId),
+          body: data.message || 'Failed to open drawer'
+        });
       }
     } catch (error) {
       console.error('Failed to open drawer:', error);
-      alert('Error opening drawer');
+      showToast({ tone: 'error', title: 'Error opening drawer', body: 'Check your connection and try again.' });
     }
   }
-  
+
   private async submitCode() {
-    const codeInput = document.getElementById('code-input') as HTMLInputElement;
-    const targetSelect = document.getElementById('code-target') as HTMLSelectElement;
-    
+    const codeInput = document.getElementById('code-input') as HTMLInputElement | null;
+    const targetSelect = document.getElementById('code-target') as HTMLSelectElement | null;
+
     const code = codeInput?.value.trim();
     const target = targetSelect?.value;
-    
+
     if (!code) {
-      alert('Please enter a code');
+      showToast({ tone: 'warning', title: 'Enter a code first' });
+      codeInput?.focus();
       return;
     }
-    
+
     if (!target) {
-      alert('Please select a target');
+      showToast({ tone: 'warning', title: 'Select a target', body: 'Card Catalog or Vault Keypad.' });
+      targetSelect?.focus();
       return;
     }
-    
+
     try {
       const response = await fetch(`${this.apiBase}/api/enter_code`, {
         method: 'POST',
@@ -230,344 +319,543 @@ export class OperatorPage {
           target: target
         })
       });
-      
+
       const data = await response.json();
-      
-      alert(data.message || 'Code submitted');
-      
-      // Clear input
-      if (codeInput) codeInput.value = '';
+      const targetLabel = targetSelect?.selectedOptions[0]?.textContent ?? humanize(target);
+
+      if (data.success) {
+        showToast({
+          tone: 'success',
+          title: data.unlocked ? `Unlocked: ${humanize(String(data.unlocked))}` : `${targetLabel} accepted`,
+          body: data.message || 'Code accepted'
+        });
+        if (codeInput) codeInput.value = '';
+      } else {
+        showToast({
+          tone: 'error',
+          title: `${targetLabel} rejected ${code}`,
+          body: data.message || 'Incorrect code'
+        });
+        codeInput?.select();
+      }
     } catch (error) {
       console.error('Failed to submit code:', error);
-      alert('Error submitting code');
+      showToast({ tone: 'error', title: 'Error submitting code', body: 'Check your connection and try again.' });
     }
   }
-  
-  private async startPolling() {
-    setInterval(async () => {
-      try {
-        // Poll inventory
-        const invRes = await fetch(`${this.apiBase}/api/get_inventory`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sessionId: this.sessionId })
-        });
-        const invData = await invRes.json();
-        
-        const invList = document.getElementById('operator-inventory');
-        if (invList && invData.items) {
-          if (invData.items.length === 0) {
-            invList.innerHTML = '<div class="empty-state">No items yet</div>';
-          } else {
-            invList.innerHTML = invData.items.map((item: any) =>
-              `<div class="inventory-item">
-                <span class="item-name">${item.item}</span>
-                <span class="item-owner">by ${item.takenBy}</span>
-              </div>`
-            ).join('');
-          }
-        }
-        
-        // Poll actions
-        const actionsRes = await fetch(`${this.apiBase}/api/get_recent_actions`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sessionId: this.sessionId, limit: 5 })
-        });
-        const actionsData = await actionsRes.json();
-        
-        const actionLog = document.getElementById('operator-action-log');
-        if (actionLog && actionsData.actions) {
-          if (actionsData.actions.length === 0) {
-            actionLog.innerHTML = '<div class="empty-state">No actions yet</div>';
-          } else {
-            actionLog.innerHTML = actionsData.actions.slice(-5).reverse().map((action: any) =>
-              `<div class="action-entry">
-                <span class="action-player">${action.player}</span>
-                <span class="action-text">${action.result}</span>
-              </div>`
-            ).join('');
-          }
-        }
-      } catch (error) {
-        console.error('Polling error:', error);
-      }
-    }, 2000);
+
+  // ---------- Find Log ----------
+
+  private get findLogKey(): string {
+    return `he-operator-findlog:${this.sessionId}`;
   }
-  
+
+  private loadFindLog(): FindLogEntry[] {
+    try {
+      const raw = sessionStorage.getItem(this.findLogKey);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private saveFindLog(): void {
+    try {
+      sessionStorage.setItem(this.findLogKey, JSON.stringify(this.findLog));
+    } catch {
+      // Storage may be unavailable (private mode); the in-memory log still works.
+    }
+  }
+
+  private pinToFindLog(title: string, contents: string): void {
+    this.findLog.unshift({ title, contents, at: Date.now() });
+    this.saveFindLog();
+    this.renderFindLog();
+    showToast({ tone: 'success', title: 'Pinned to Find Log', body: title });
+  }
+
+  /** Built with DOM nodes (not innerHTML) because clue text comes from the server. */
+  private renderFindLog(): void {
+    const list = document.getElementById('operator-find-log');
+    const clearBtn = document.getElementById('clear-find-log-btn');
+    if (!list) return;
+
+    list.replaceChildren();
+    if (clearBtn) clearBtn.hidden = this.findLog.length === 0;
+
+    if (this.findLog.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'op-empty';
+      empty.textContent = 'Nothing pinned yet. Open a drawer and tap Pin.';
+      list.appendChild(empty);
+      return;
+    }
+
+    for (const entry of this.findLog) {
+      const item = document.createElement('article');
+      item.className = 'op-find';
+
+      const head = document.createElement('div');
+      head.className = 'op-find__head';
+      const title = document.createElement('span');
+      title.className = 'op-find__title';
+      title.textContent = entry.title;
+      const time = document.createElement('time');
+      time.className = 'op-find__time';
+      time.dateTime = new Date(entry.at).toISOString();
+      time.textContent = new Date(entry.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      head.append(title, time);
+
+      const text = document.createElement('p');
+      text.className = 'op-find__text';
+      text.textContent = entry.contents;
+
+      item.append(head, text);
+      item.addEventListener('click', () => {
+        showClueSheet({ eyebrow: 'Find Log', title: entry.title, contents: entry.contents });
+      });
+      list.appendChild(item);
+    }
+  }
+
+  // ---------- Polling ----------
+
+  private startPolling() {
+    this.stopPolling();
+    this.pollTimer = window.setInterval(() => void this.poll(), POLL_MS);
+  }
+
+  private stopPolling() {
+    if (this.pollTimer !== null) window.clearInterval(this.pollTimer);
+    this.pollTimer = null;
+  }
+
+  private async poll() {
+    try {
+      const invRes = await fetch(`${this.apiBase}/api/get_inventory`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: this.sessionId })
+      });
+      const invData = await invRes.json();
+
+      const invList = document.getElementById('operator-inventory');
+      if (invList && invData.items) {
+        if (invData.items.length === 0) {
+          invList.innerHTML = '<div class="op-empty">No items yet</div>';
+        } else {
+          invList.innerHTML = invData.items
+            .map(
+              (item: any) =>
+                `<div class="op-row op-row--gold">
+                  <span class="op-row__name">${esc(item.item)}</span>
+                  <span class="op-row__meta">by ${esc(item.takenBy)}</span>
+                </div>`
+            )
+            .join('');
+        }
+      }
+
+      const actionsRes = await fetch(`${this.apiBase}/api/get_recent_actions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: this.sessionId, limit: 5 })
+      });
+      const actionsData = await actionsRes.json();
+
+      const actionLog = document.getElementById('operator-action-log');
+      if (actionLog && actionsData.actions) {
+        if (actionsData.actions.length === 0) {
+          actionLog.innerHTML = '<div class="op-empty">No actions yet</div>';
+        } else {
+          actionLog.innerHTML = actionsData.actions
+            .slice(-5)
+            .reverse()
+            .map(
+              (action: any) =>
+                `<div class="op-row op-row--cyan">
+                  <span class="op-row__player">${esc(action.player)}</span>
+                  <span class="op-row__text">${esc(action.result)}</span>
+                </div>`
+            )
+            .join('');
+        }
+      }
+    } catch (error) {
+      console.error('Polling error:', error);
+    }
+  }
+
+  // ---------- Styles (injected once; tokens come from theme/tokens.css) ----------
+
   private applyStyles() {
+    if (document.getElementById(STYLE_ID)) return;
     const style = document.createElement('style');
+    style.id = STYLE_ID;
     style.textContent = `
-      .operator-container {
+      .op-page {
         max-width: 600px;
         margin: 0 auto;
-        padding: 1rem;
-        background: white;
+        padding: var(--he-s-3) var(--he-s-3) calc(var(--he-s-7) + env(safe-area-inset-bottom, 0px));
         min-height: 100vh;
+        font-family: var(--he-font-ui);
+        color: var(--he-ink-900);
       }
-      
-      .operator-header {
-        text-align: center;
-        margin-bottom: 1.5rem;
-        padding-bottom: 1rem;
-        border-bottom: 3px solid #48bb78;
+
+      /* Dark glass header */
+      .op-header {
+        position: sticky;
+        top: var(--he-s-2);
+        z-index: 5;
+        margin-bottom: var(--he-s-4);
+        padding: var(--he-s-3) var(--he-s-4);
+        border-radius: var(--he-r-md);
+        background: linear-gradient(180deg, rgba(38, 33, 26, 0.9), rgba(24, 21, 16, 0.94));
+        -webkit-backdrop-filter: blur(var(--he-glass-blur)) saturate(1.2);
+        backdrop-filter: blur(var(--he-glass-blur)) saturate(1.2);
+        border: 1px solid rgba(255, 253, 248, 0.1);
+        border-bottom-color: var(--he-hairline-gold);
+        box-shadow: 0 12px 32px rgba(20, 14, 4, 0.28);
+        color: var(--he-pearl-1);
       }
-      
-      .operator-header h1 {
-        font-size: 1.75rem;
-        color: #1a202c;
-        margin-bottom: 0.5rem;
+
+      .op-header__row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--he-s-3);
       }
-      
-      .session-badge {
-        font-size: 0.875rem;
-        margin-bottom: 0.25rem;
-      }
-      
-      .companion-note {
-        font-size: 0.875rem;
-        color: #718096;
-        font-style: italic;
-      }
-      
-      .session-badge code {
-        background: #48bb78;
-        color: white;
-        padding: 0.25rem 0.75rem;
-        border-radius: 4px;
+
+      .op-header__eyebrow {
+        font-size: 0.68rem;
         font-weight: 600;
+        letter-spacing: var(--he-track-caps);
+        text-transform: uppercase;
+        color: var(--he-cyan-300);
       }
-      
-      .join-form {
-        padding: 2rem;
-        background: #f7fafc;
-        border-radius: 12px;
-        text-align: center;
+
+      .op-header__title {
+        margin-top: var(--he-s-1);
+        font-family: var(--he-font-display);
+        font-size: 1.35rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        color: var(--he-gold-200);
+        overflow-wrap: anywhere;
       }
-      
-      .join-icon {
-        font-size: 3rem;
-        margin-bottom: 1rem;
+
+      /* Gold session badge */
+      .op-session {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--he-s-2);
+        padding: 4px 4px 4px var(--he-s-3);
+        border-radius: var(--he-r-pill);
+        border: 1px solid var(--he-hairline-gold);
+        background: rgba(201, 162, 74, 0.1);
       }
-      
-      .join-form h2 {
-        font-size: 1.5rem;
-        color: #2d3748;
-        margin-bottom: 0.5rem;
+
+      .op-session__label {
+        font-size: 0.65rem;
+        font-weight: 600;
+        letter-spacing: var(--he-track-caps);
+        text-transform: uppercase;
+        color: var(--he-gold-300);
       }
-      
-      .join-form p {
-        color: #718096;
-        margin-bottom: 1.5rem;
+
+      .op-session__id {
+        padding: 3px 10px;
+        border-radius: var(--he-r-pill);
+        font-family: var(--he-font-mono);
+        font-size: 0.8rem;
+        font-weight: 700;
+        color: var(--he-ink-900);
+        background: linear-gradient(135deg, var(--he-gold-200), var(--he-gold-500) 60%, var(--he-gold-700));
       }
-      
-      .input-group {
-        margin-bottom: 1rem;
+
+      /* Frosted cards */
+      .op-card {
+        margin-bottom: var(--he-s-4);
+        padding: var(--he-s-4);
+        border-radius: var(--he-r-md);
+        background: var(--he-glass-bg);
+        -webkit-backdrop-filter: blur(var(--he-glass-blur)) saturate(1.15);
+        backdrop-filter: blur(var(--he-glass-blur)) saturate(1.15);
+        border: 1px solid var(--he-hairline-soft);
+        box-shadow: var(--he-glass-shadow-soft);
       }
-      
-      .input-group label {
+
+      .op-card__head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: var(--he-s-3);
+      }
+
+      .op-card__eyebrow {
         display: block;
+        font-size: 0.68rem;
         font-weight: 600;
-        color: #4a5568;
-        margin-bottom: 0.5rem;
-        font-size: 0.875rem;
+        letter-spacing: var(--he-track-caps);
+        text-transform: uppercase;
+        color: var(--he-ink-500);
       }
-      
-      .input-group input {
-        width: 100%;
-        padding: 0.75rem;
-        border: 2px solid #e2e8f0;
-        border-radius: 8px;
-        font-size: 1rem;
+
+      .op-card__title {
+        margin: 2px 0 var(--he-s-3);
+        font-family: var(--he-font-display);
+        font-size: 1.1rem;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        color: var(--he-gold-700);
       }
-      
-      .input-group input:focus {
-        outline: none;
-        border-color: #48bb78;
+
+      .op-card__lede {
+        margin-bottom: var(--he-s-4);
+        font-size: 0.95rem;
+        line-height: 1.5;
+        color: var(--he-ink-500);
       }
-      
-      .operator-controls section {
-        margin-bottom: 1.5rem;
-        padding: 1rem;
-        background: #f7fafc;
-        border-radius: 8px;
+
+      .op-join {
+        border-color: var(--he-hairline-gold);
       }
-      
-      .operator-controls h2 {
-        font-size: 1.25rem;
-        color: #2d3748;
-        margin-bottom: 1rem;
-      }
-      
-      .action-group {
-        margin-bottom: 1.5rem;
-      }
-      
-      .action-group h3 {
-        font-size: 1rem;
-        color: #4a5568;
-        margin-bottom: 0.75rem;
-      }
-      
-      .action-btn {
-        display: block;
-        width: 100%;
-        padding: 1rem;
-        margin-bottom: 0.5rem;
-        background: white;
-        border: 2px solid #48bb78;
-        border-radius: 8px;
-        color: #2d3748;
-        font-weight: 600;
-        font-size: 1rem;
-        cursor: pointer;
-        transition: all 0.2s;
-      }
-      
-      .action-btn:hover {
-        background: #48bb78;
-        color: white;
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(72, 187, 120, 0.3);
-      }
-      
-      .action-btn:active {
-        transform: translateY(0);
-      }
-      
-      .code-input-group {
+
+      .op-stack {
         display: flex;
         flex-direction: column;
-        gap: 0.5rem;
+        gap: var(--he-s-2);
       }
-      
-      .code-input-group input,
-      .code-input-group select {
-        padding: 0.75rem;
-        border: 2px solid #e2e8f0;
-        border-radius: 8px;
-        font-size: 1rem;
+
+      /* Inputs */
+      .op-field {
+        display: block;
+        margin-bottom: var(--he-s-4);
+        text-align: left;
       }
-      
-      .code-input-group input:focus,
-      .code-input-group select:focus {
-        outline: none;
-        border-color: #4299e1;
-      }
-      
-      .submit-btn {
-        padding: 1rem;
-        background: #4299e1;
-        color: white;
-        border: none;
-        border-radius: 8px;
+
+      .op-field__label {
+        display: block;
+        margin-bottom: var(--he-s-2);
+        font-size: 0.8rem;
         font-weight: 600;
+        color: var(--he-ink-700);
+      }
+
+      .op-input {
+        width: 100%;
+        min-height: 48px;
+        padding: var(--he-s-3);
+        border: 1px solid var(--he-hairline-soft);
+        border-radius: var(--he-r-sm);
+        background: var(--he-glass-bg-strong);
+        color: var(--he-ink-900);
+        font-family: var(--he-font-ui);
         font-size: 1rem;
+      }
+
+      .op-input--code {
+        font-family: var(--he-font-mono);
+        font-size: 1.25rem;
+        letter-spacing: 0.18em;
+        text-align: center;
+      }
+
+      .op-input:focus {
+        outline: none;
+        border-color: var(--he-cyan-500);
+        box-shadow: var(--he-glow-cyan);
+      }
+
+      /* Buttons */
+      .op-btn {
+        display: block;
+        width: 100%;
+        min-height: 52px;
+        padding: var(--he-s-3) var(--he-s-4);
+        border-radius: var(--he-r-sm);
+        font-family: var(--he-font-ui);
+        font-size: 1rem;
+        font-weight: 600;
+        letter-spacing: 0.02em;
         cursor: pointer;
-        transition: all 0.2s;
+        transition: transform var(--he-dur-fast) var(--he-ease), box-shadow var(--he-dur-fast) var(--he-ease),
+          background var(--he-dur-fast) var(--he-ease);
       }
-      
-      .submit-btn:hover {
-        background: #3182ce;
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(66, 153, 225, 0.3);
+
+      .op-btn:active {
+        transform: translateY(1px);
       }
-      
-      .inventory-list, .action-log-list {
-        max-height: 200px;
+
+      .op-btn:disabled {
+        opacity: 0.6;
+        cursor: progress;
+      }
+
+      .op-btn:focus-visible {
+        outline: none;
+        box-shadow: var(--he-glow-cyan);
+      }
+
+      .op-btn--cyan {
+        border: 1px solid var(--he-hairline-cyan);
+        color: var(--he-cyan-700);
+        background: linear-gradient(180deg, rgba(255, 253, 248, 0.9), var(--he-cyan-100));
+      }
+
+      .op-btn--cyan:hover {
+        box-shadow: var(--he-glow-cyan);
+      }
+
+      .op-btn--gold {
+        border: none;
+        color: var(--he-ink-900);
+        background: linear-gradient(135deg, var(--he-gold-200), var(--he-gold-500) 60%, var(--he-gold-700));
+        box-shadow: 0 6px 18px rgba(201, 162, 74, 0.3);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
+      .op-btn--gold:hover {
+        box-shadow: var(--he-glow-gold);
+      }
+
+      .op-link-btn {
+        padding: var(--he-s-1) var(--he-s-2);
+        border: none;
+        background: none;
+        color: var(--he-cyan-700);
+        font-family: var(--he-font-ui);
+        font-size: 0.8rem;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      /* Lists */
+      .op-list {
+        display: flex;
+        flex-direction: column;
+        gap: var(--he-s-2);
+        max-height: 260px;
         overflow-y: auto;
       }
-      
-      .inventory-item {
-        padding: 0.75rem;
-        margin: 0.5rem 0;
-        background: white;
-        border-radius: 6px;
-        border-left: 3px solid #48bb78;
+
+      .op-row {
+        padding: var(--he-s-3);
+        border-radius: var(--he-r-xs);
+        background: var(--he-glass-bg-strong);
+        border-left: 3px solid var(--he-gold-500);
+      }
+
+      .op-row--gold {
         display: flex;
-        justify-content: space-between;
         align-items: center;
+        justify-content: space-between;
+        gap: var(--he-s-2);
       }
-      
-      .item-name {
+
+      .op-row--cyan {
+        border-left-color: var(--he-cyan-500);
+      }
+
+      .op-row__name {
         font-weight: 600;
-        color: #2d3748;
+        color: var(--he-ink-900);
       }
-      
-      .item-owner {
-        font-size: 0.875rem;
-        color: #718096;
+
+      .op-row__meta {
+        font-size: 0.8rem;
+        color: var(--he-ink-500);
       }
-      
-      .action-entry {
-        padding: 0.75rem;
-        margin: 0.5rem 0;
-        background: white;
-        border-radius: 6px;
-        border-left: 3px solid #4299e1;
-      }
-      
-      .action-player {
-        font-weight: 600;
-        color: #4299e1;
+
+      .op-row__player {
         display: block;
-        margin-bottom: 0.25rem;
+        margin-bottom: 2px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: var(--he-cyan-700);
       }
-      
-      .action-text {
-        font-size: 0.875rem;
-        color: #4a5568;
+
+      .op-row__text {
+        font-size: 0.9rem;
+        color: var(--he-ink-700);
       }
-      
-      .empty-state {
+
+      /* Find Log entries */
+      .op-find {
+        padding: var(--he-s-3);
+        border-radius: var(--he-r-sm);
+        background: var(--he-glass-bg-strong);
+        border: 1px solid var(--he-hairline-gold);
+        cursor: pointer;
+      }
+
+      .op-find__head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: var(--he-s-2);
+        margin-bottom: var(--he-s-1);
+      }
+
+      .op-find__title {
+        font-family: var(--he-font-display);
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: var(--he-gold-700);
+        overflow-wrap: anywhere;
+      }
+
+      .op-find__time {
+        flex: 0 0 auto;
+        font-family: var(--he-font-mono);
+        font-size: 0.7rem;
+        color: var(--he-ink-300);
+      }
+
+      .op-find__text {
+        margin: 0;
+        font-size: 0.9rem;
+        line-height: 1.45;
+        color: var(--he-ink-700);
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+
+      .op-empty {
+        padding: var(--he-s-4);
         text-align: center;
-        color: #a0aec0;
-        padding: 1.5rem;
+        font-size: 0.9rem;
         font-style: italic;
+        color: var(--he-ink-300);
       }
-      
-      .help-section ul {
+
+      .op-tips {
         list-style: none;
         padding: 0;
       }
-      
-      .help-section li {
-        padding: 0.5rem 0;
-        color: #4a5568;
+
+      .op-tips li {
+        padding: var(--he-s-2) 0 var(--he-s-2) var(--he-s-5);
+        position: relative;
+        font-size: 0.9rem;
+        color: var(--he-ink-700);
       }
-      
-      .help-section li:before {
-        content: "💡 ";
-        margin-right: 0.5rem;
-      }
-      
-      .primary-btn {
-        width: 100%;
-        padding: 1rem 2rem;
-        font-size: 1.125rem;
-        font-weight: 700;
-        background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
-        color: white;
-        border: none;
-        border-radius: 8px;
-        cursor: pointer;
-        transition: all 0.2s;
-        text-transform: uppercase;
-      }
-      
-      .primary-btn:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(72, 187, 120, 0.4);
-      }
-      
-      .primary-btn:active {
-        transform: translateY(0);
+
+      .op-tips li::before {
+        content: "\\2666";
+        position: absolute;
+        left: var(--he-s-2);
+        color: var(--he-gold-500);
       }
     `;
     document.head.appendChild(style);
   }
-  
+
   destroy() {
-    // Cleanup if needed
+    this.stopPolling();
   }
 }
