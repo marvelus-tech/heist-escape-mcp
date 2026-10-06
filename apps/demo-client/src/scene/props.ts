@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { PALETTE, lockEmissive, makeGlow, materials } from './materials';
+import { skipOutline } from './focus-fx';
 
 /**
  * Module B: procedural museum props (architecture + accents).
@@ -453,5 +454,422 @@ export function galaBanner(text = 'DIAMONDS THROUGH THE AGES', subtitle = 'GALA 
     finial.position.x = x;
     group.add(finial);
   }
+  return group;
+}
+
+/* ----------------------------------------------------------------------------
+ * VIS-B hero props. Locked art brief: ornate dark-wood desk with gold carving,
+ * crystal vase of lilies on gold stems, floating brass skeleton key.
+ * Silhouettes first: every detail is sized to read from the Stage TV.
+ * -------------------------------------------------------------------------- */
+
+/** Height of the reception desk's writing surface; anything "on the desk" sits here. */
+export const DESK_TOP_Y = 0.82;
+
+/** Tiny deterministic PRNG for the wood grain (same streaks on every rebuild). */
+function seeded(seed: number): () => number {
+  let s = seed >>> 0;
+  return () => {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    return s / 4294967296;
+  };
+}
+
+let woodTexture: THREE.CanvasTexture | null = null;
+
+/** Dark walnut grain: near-black base with warm streaks drifting along X. */
+function getWoodTexture(): THREE.CanvasTexture {
+  if (woodTexture) return woodTexture;
+  const size = 512;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
+  const rand = seeded(4242);
+  ctx.fillStyle = '#4a2c1c';
+  ctx.fillRect(0, 0, size, size);
+  ctx.lineCap = 'round';
+  for (let i = 0; i < 160; i++) {
+    const light = rand() > 0.45;
+    ctx.strokeStyle = light
+      ? `rgba(150, 96, 60, ${0.08 + rand() * 0.18})`
+      : `rgba(28, 14, 8, ${0.12 + rand() * 0.25})`;
+    ctx.lineWidth = 1 + rand() * 4;
+    const y = rand() * size;
+    ctx.beginPath();
+    ctx.moveTo(-20, y);
+    ctx.bezierCurveTo(size * 0.3, y + (rand() - 0.5) * 24, size * 0.7, y + (rand() - 0.5) * 24, size + 20, y + (rand() - 0.5) * 10);
+    ctx.stroke();
+  }
+  woodTexture = new THREE.CanvasTexture(canvas);
+  woodTexture.wrapS = woodTexture.wrapT = THREE.RepeatWrapping;
+  woodTexture.colorSpace = THREE.SRGBColorSpace;
+  woodTexture.anisotropy = 4;
+  return woodTexture;
+}
+
+/**
+ * Polished dark walnut: the shared mahogany factory, deepened and grained
+ * (palette untouched). Emissive is locked: the generic cyan interactable tint
+ * turns dark wood teal, and the brief wants wood; focus outlines carry the cue.
+ */
+function darkWood(repeatX = 2, repeatY = 1): THREE.MeshStandardMaterial {
+  const wood = lockEmissive(materials.mahogany());
+  wood.color.multiplyScalar(0.7);
+  const map = getWoodTexture().clone();
+  map.repeat.set(repeatX, repeatY);
+  map.needsUpdate = true;
+  wood.map = map;
+  wood.roughness = 0.3;
+  wood.envMapIntensity = 0.9;
+  return wood;
+}
+
+/**
+ * Gold for carvings: keeps its own warm emissive (no cyan tint) and opts out of
+ * focus hulls, because outlining fifty rosettes reads as noise, not a silhouette.
+ */
+function carvedGold(emissive = 0.1): THREE.MeshStandardMaterial {
+  const gold = lockEmissive(skipOutline(materials.gold()));
+  gold.emissive.setHex(PALETTE.gold);
+  gold.emissiveIntensity = emissive;
+  return gold;
+}
+
+/** Cylinder between two points (stems, struts). */
+function strut(from: THREE.Vector3, to: THREE.Vector3, radius: number, material: THREE.Material): THREE.Mesh {
+  const dir = new THREE.Vector3().subVectors(to, from);
+  const length = dir.length();
+  const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, length, 6), material);
+  mesh.position.copy(from).addScaledVector(dir, 0.5);
+  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
+  return mesh;
+}
+
+/** Four thin bars framing a rectangle in the XZ plane (leather border, drawer beading). */
+function goldBeading(w: number, d: number, t: number, material: THREE.Material): THREE.Group {
+  const group = new THREE.Group();
+  for (const [bw, bd, x, z] of [
+    [w, t, 0, d / 2], [w, t, 0, -d / 2], [t, d, -w / 2, 0], [t, d, w / 2, 0],
+  ]) {
+    const bar = box(bw, t, bd, material, false);
+    bar.position.set(x, 0, z);
+    group.add(bar);
+  }
+  return group;
+}
+
+const plaqueTextures = new Map<string, THREE.CanvasTexture>();
+
+/** Engraved brass desk plaque on a tilted stand ("GALLERY A / AUTHORIZED ACCESS ONLY" in the still). */
+export function brassPlaque(title = 'GALLERY A', subtitle = 'AUTHORIZED ACCESS ONLY'): THREE.Group {
+  const key = `${title}|${subtitle}`;
+  let texture = plaqueTextures.get(key);
+  if (!texture) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 128;
+    const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
+    const brassGradient = ctx.createLinearGradient(0, 0, 512, 128);
+    brassGradient.addColorStop(0, '#e6c77a');
+    brassGradient.addColorStop(0.5, '#b8892f');
+    brassGradient.addColorStop(1, '#d9b25c');
+    ctx.fillStyle = brassGradient;
+    ctx.fillRect(0, 0, 512, 128);
+    ctx.strokeStyle = 'rgba(60, 38, 12, 0.7)';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(10, 10, 492, 108);
+    ctx.fillStyle = '#3a2610';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = 'bold 56px Georgia, "Times New Roman", serif';
+    ctx.fillText(title, 256, 50);
+    ctx.font = '22px Georgia, "Times New Roman", serif';
+    ctx.fillText(subtitle.split('').join(' '), 256, 98);
+    texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.anisotropy = 4;
+    plaqueTextures.set(key, texture);
+  }
+
+  const group = new THREE.Group();
+  const brass = lockEmissive(skipOutline(materials.brass()));
+  const base = box(0.64, 0.02, 0.14, brass, false);
+  base.position.set(0, 0.01, -0.04);
+  group.add(base);
+
+  // Tilt pivot at the bottom edge so the face leans back toward the TV camera.
+  const tilt = new THREE.Group();
+  tilt.rotation.x = -0.32;
+  const body = box(0.62, 0.16, 0.02, brass, false);
+  body.position.y = 0.09;
+  tilt.add(body);
+  const face = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.6, 0.15),
+    lockEmissive(skipOutline(new THREE.MeshStandardMaterial({
+      map: texture, metalness: 0.75, roughness: 0.35, envMapIntensity: 1.1,
+    })))
+  );
+  face.position.set(0, 0.09, 0.011);
+  tilt.add(face);
+  group.add(tilt);
+  return group;
+}
+
+/**
+ * Ornate reception desk: polished dark walnut, gold beading, carved gold frieze,
+ * three raised drawer fronts with ring pulls, torus-knot "acanthus" corners,
+ * dark leather writing inset. Front face is +Z (toward the Stage camera).
+ */
+export function receptionDesk(width = 3.2, depth = 1.2): THREE.Group {
+  const group = new THREE.Group();
+  const wood = darkWood(2, 1);
+  const gold = carvedGold();
+  const topT = 0.07;
+  const plinthH = 0.1;
+  const bodyH = DESK_TOP_Y - topT - plinthH;
+  const bodyY = plinthH + bodyH / 2;
+  const frontZ = depth / 2 - 0.1;
+
+  const plinth = box(width - 0.1, plinthH, depth - 0.1, gold);
+  plinth.position.y = plinthH / 2;
+  const body = box(width - 0.2, bodyH, depth - 0.2, wood);
+  body.position.y = bodyY;
+  const top = box(width, topT, depth, darkWood(3, 1));
+  top.position.y = DESK_TOP_Y - topT / 2;
+  const lip = box(width + 0.04, 0.025, depth + 0.04, gold, false);
+  lip.position.y = DESK_TOP_Y - topT - 0.0125;
+  group.add(plinth, body, top, lip);
+
+  // Leather inset with gold border.
+  const leather = lockEmissive(skipOutline(new THREE.MeshStandardMaterial({ color: 0x18231f, roughness: 0.55, metalness: 0 })));
+  const insetW = width - 1.0;
+  const insetD = depth - 0.5;
+  const inset = box(insetW, 0.012, insetD, leather, false);
+  inset.position.set(0, DESK_TOP_Y + 0.006, 0.02);
+  const insetBorder = goldBeading(insetW + 0.03, insetD + 0.03, 0.025, gold);
+  insetBorder.position.set(0, DESK_TOP_Y + 0.012, 0.02);
+  group.add(inset, insetBorder);
+
+  // Three raised drawer fronts with beading and ring pulls.
+  const drawerW = (width - 0.5) / 3 - 0.1;
+  const drawerH = bodyH - 0.34;
+  for (const i of [-1, 0, 1]) {
+    const x = i * (drawerW + 0.14);
+    const panel = box(drawerW, drawerH, 0.03, wood, false);
+    panel.position.set(x, bodyY - 0.06, frontZ + 0.015);
+    group.add(panel);
+    const beading = goldBeading(drawerW - 0.06, drawerH - 0.06, 0.02, gold);
+    beading.rotation.x = Math.PI / 2;
+    beading.position.set(x, bodyY - 0.06, frontZ + 0.035);
+    group.add(beading);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.011, 8, 20), gold);
+    ring.position.set(x, bodyY - 0.09, frontZ + 0.05);
+    group.add(ring);
+    const boss = new THREE.Mesh(new THREE.SphereGeometry(0.022, 10, 8), gold);
+    boss.position.set(x, bodyY - 0.03, frontZ + 0.045);
+    group.add(boss);
+  }
+
+  // Carved frieze: rosettes marching along the top of the apron.
+  const friezeY = plinthH + bodyH - 0.1;
+  const rosetteRing = new THREE.TorusGeometry(0.028, 0.009, 6, 12);
+  const rosetteCore = new THREE.SphereGeometry(0.016, 8, 6);
+  for (let x = -width / 2 + 0.32; x <= width / 2 - 0.3; x += 0.2) {
+    const ring = new THREE.Mesh(rosetteRing, gold);
+    ring.position.set(x, friezeY, frontZ + 0.02);
+    const core = new THREE.Mesh(rosetteCore, gold);
+    core.position.set(x, friezeY, frontZ + 0.03);
+    group.add(ring, core);
+  }
+
+  // Acanthus-style corner carvings + fluted gold pilasters on the front corners.
+  const knot = new THREE.TorusKnotGeometry(0.055, 0.016, 48, 8);
+  for (const x of [-width / 2 + 0.16, width / 2 - 0.16]) {
+    const carving = new THREE.Mesh(knot, gold);
+    carving.position.set(x, plinthH + bodyH - 0.08, frontZ + 0.04);
+    carving.rotation.z = Math.PI / 2;
+    group.add(carving);
+    const pilaster = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.04, bodyH - 0.2, 10), gold);
+    pilaster.position.set(x, plinthH + (bodyH - 0.2) / 2, frontZ + 0.03);
+    group.add(pilaster);
+  }
+
+  const plaque = brassPlaque();
+  plaque.position.set(width / 2 - 0.62, DESK_TOP_Y, depth / 2 - 0.2);
+  plaque.rotation.y = -0.18;
+  group.add(plaque);
+  return group;
+}
+
+let petalGeometry: THREE.BufferGeometry | null = null;
+
+/** Elongated pointed petal, base at the origin, tip along +Y. Shared across all lilies. */
+function getPetalGeometry(): THREE.BufferGeometry {
+  if (petalGeometry) return petalGeometry;
+  const geometry = new THREE.SphereGeometry(1, 10, 8);
+  geometry.scale(0.055, 0.17, 0.014);
+  geometry.translate(0, 0.16, 0);
+  geometry.computeVertexNormals();
+  petalGeometry = geometry;
+  return geometry;
+}
+
+/** One open lily: six petals in two tiers, three gold stamens with bright tips. */
+function lily(petal: THREE.Material, gold: THREE.Material, tip: THREE.Material): THREE.Group {
+  const group = new THREE.Group();
+  const geometry = getPetalGeometry();
+  for (let i = 0; i < 6; i++) {
+    const outer = i % 2 === 0;
+    const mesh = new THREE.Mesh(geometry, petal);
+    // 'YXZ': tilt outward about X first, then fan around the stem axis.
+    mesh.rotation.set(outer ? 0.95 : 0.65, (i / 6) * Math.PI * 2, 0, 'YXZ');
+    mesh.castShadow = false;
+    group.add(mesh);
+  }
+  for (let i = 0; i < 3; i++) {
+    const angle = (i / 3) * Math.PI * 2;
+    const to = new THREE.Vector3(Math.cos(angle) * 0.03, 0.13, Math.sin(angle) * 0.03);
+    group.add(strut(new THREE.Vector3(0, 0.01, 0), to, 0.005, gold));
+    const anther = new THREE.Mesh(new THREE.SphereGeometry(0.013, 8, 6), tip);
+    anther.position.copy(to);
+    group.add(anther);
+  }
+  return group;
+}
+
+/**
+ * Faceted crystal vase (lathe, flat-shaded) holding seven lilies on gold stems,
+ * two buds and four gold leaves. Roughly 1.05 m tall so it reads beside the key.
+ */
+export function crystalVase(): THREE.Group {
+  const group = new THREE.Group();
+
+  // Faint fixed ice emissive instead of the generic cyan tint, so the body stays crystal.
+  const crystal = lockEmissive(materials.glass());
+  crystal.color.setHex(0xe6f7ff);
+  crystal.emissive.setHex(0x9fe9ff);
+  crystal.emissiveIntensity = 0.05;
+  crystal.opacity = 0.5;
+  crystal.roughness = 0.02;
+  crystal.envMapIntensity = 2.4;
+  crystal.flatShading = true;
+  crystal.side = THREE.DoubleSide;
+  const profile = [
+    [0.0, 0], [0.11, 0], [0.15, 0.03], [0.18, 0.11], [0.17, 0.2],
+    [0.12, 0.29], [0.095, 0.35], [0.115, 0.41], [0.145, 0.44],
+  ].map(([r, y]) => new THREE.Vector2(r, y));
+  const vaseGeometry = new THREE.LatheGeometry(profile, 12);
+  const vase = new THREE.Mesh(vaseGeometry, crystal);
+  vase.castShadow = false;
+  vase.receiveShadow = false;
+  group.add(vase);
+  // Facet edges: thin white lines sell "cut crystal" for one draw call.
+  const facets = new THREE.LineSegments(
+    new THREE.EdgesGeometry(vaseGeometry, 12),
+    new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35, depthWrite: false })
+  );
+  group.add(facets);
+
+  // Stems/leaves stay pure gold: no tint, no hull (hulled stems read as cyan tubes).
+  const gold = lockEmissive(skipOutline(materials.gold()));
+  gold.emissive.setHex(PALETTE.gold);
+  gold.emissiveIntensity = 0.1;
+  const tip = lockEmissive(skipOutline(materials.gold()));
+  tip.emissive.setHex(0xffd27a);
+  tip.emissiveIntensity = 0.5;
+  // Petals: opaque ice-white with a whisper of fixed cyan; the focus hull draws the neon edge.
+  const petal = lockEmissive(new THREE.MeshStandardMaterial({
+    color: 0xffffff, roughness: 0.18, metalness: 0, envMapIntensity: 1.5,
+    emissive: 0x9fe9ff, emissiveIntensity: 0.06, side: THREE.DoubleSide,
+  }));
+
+  const stemBase = new THREE.Vector3(0, 0.05, 0);
+  const blooms: Array<[number, number, number, number, number, number]> = [
+    // x, y, z, tiltX, tiltZ, scale
+    [0.0, 1.02, 0.0, 0.0, 0.0, 1.0],
+    [0.24, 0.9, 0.06, 0.55, 0.15, 0.95],
+    [-0.22, 0.86, 0.12, 0.5, -0.35, 0.9],
+    [0.06, 0.8, 0.25, 0.65, 0.05, 0.85],
+    [-0.1, 0.84, -0.22, -0.5, -0.15, 0.85],
+    [0.2, 0.72, -0.16, -0.35, 0.45, 0.8],
+    [-0.26, 0.7, -0.04, 0.05, -0.55, 0.8],
+  ];
+  for (const [x, y, z, tiltX, tiltZ, scale] of blooms) {
+    const head = new THREE.Vector3(x, y, z);
+    const stemTop = head.clone().addScaledVector(new THREE.Vector3(0, 1, 0), -0.02);
+    group.add(strut(new THREE.Vector3(x * 0.25, stemBase.y, z * 0.25), stemTop, 0.008, gold));
+    const bloom = lily(petal, gold, tip);
+    bloom.position.copy(head);
+    bloom.rotation.set(tiltX, 0, tiltZ);
+    bloom.scale.setScalar(scale);
+    group.add(bloom);
+  }
+
+  // Closed buds and gold leaves for a fuller silhouette.
+  for (const [x, y, z] of [[0.3, 0.62, -0.02], [-0.16, 0.6, 0.24]]) {
+    const head = new THREE.Vector3(x, y, z);
+    group.add(strut(new THREE.Vector3(x * 0.25, stemBase.y, z * 0.25), head, 0.007, gold));
+    const bud = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.12, 6), petal);
+    bud.position.copy(head).add(new THREE.Vector3(0, 0.05, 0));
+    bud.rotation.set(x * 0.6, 0, -z * 0.6);
+    group.add(bud);
+  }
+  const leafGeometry = new THREE.ConeGeometry(0.035, 0.32, 5);
+  leafGeometry.scale(1, 1, 0.25);
+  for (let i = 0; i < 4; i++) {
+    const angle = (i / 4) * Math.PI * 2 + 0.4;
+    const leaf = new THREE.Mesh(leafGeometry, gold);
+    leaf.position.set(Math.cos(angle) * 0.12, 0.58, Math.sin(angle) * 0.12);
+    leaf.rotation.set(Math.sin(angle) * 0.55, -angle, Math.cos(angle) * 0.55, 'YXZ');
+    group.add(leaf);
+  }
+  return group;
+}
+
+/**
+ * Brass skeleton key, bow (trefoil) at +Y, bit at -Y, centred on its middle so
+ * the caller can tilt and spin it. Emissive gold so it stays warm under focus.
+ */
+export function skeletonKey(length = 0.75): THREE.Group {
+  const group = new THREE.Group();
+  const gold = lockEmissive(materials.gold());
+  gold.color.setHex(0xe0b04a);
+  gold.emissive.setHex(0xffc65a);
+  gold.emissiveIntensity = 0.28;
+  gold.roughness = 0.18;
+
+  const shaftR = length * 0.03;
+  const bowR = length * 0.13;
+  const shaftLen = length - bowR * 2.2;
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(shaftR, shaftR * 0.9, shaftLen, 12), gold);
+  shaft.position.y = shaftLen / 2;
+  group.add(shaft);
+  for (const y of [shaftLen * 0.3, shaftLen * 0.92]) {
+    const collar = new THREE.Mesh(new THREE.TorusGeometry(shaftR * 1.35, shaftR * 0.5, 8, 16), gold);
+    collar.rotation.x = Math.PI / 2;
+    collar.position.y = y;
+    group.add(collar);
+  }
+
+  // Bow: ring plus three lobes (top, upper-left, upper-right) for the clover head.
+  const bowY = shaftLen + bowR;
+  const bow = new THREE.Mesh(new THREE.TorusGeometry(bowR, shaftR * 0.9, 10, 32), gold);
+  bow.position.y = bowY;
+  group.add(bow);
+  for (const angle of [Math.PI / 2, Math.PI / 6, (5 * Math.PI) / 6]) {
+    const lobe = new THREE.Mesh(new THREE.TorusGeometry(bowR * 0.42, shaftR * 0.75, 8, 20), gold);
+    lobe.position.set(Math.cos(angle) * bowR * 1.15, bowY + Math.sin(angle) * bowR * 1.15, 0);
+    group.add(lobe);
+  }
+
+  // Bit: stepped teeth on +X.
+  const bit = box(shaftR * 5, shaftR * 4.6, shaftR * 1.2, gold);
+  bit.position.set(shaftR * 2.6, shaftR * 3.2, 0);
+  const tooth = box(shaftR * 2.4, shaftR * 2.2, shaftR * 1.3, gold);
+  tooth.position.set(shaftR * 4.6, shaftR * 1.1, 0);
+  group.add(bit, tooth);
+
+  group.children.forEach(child => { child.position.y -= length / 2; });
+  group.userData.gold = gold;
   return group;
 }
